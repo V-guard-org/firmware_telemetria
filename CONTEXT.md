@@ -22,6 +22,26 @@ _Avoid_: parâmetro OBD, sensor do carro
 A unidade de comunicação entre o ESP32 e a Pi pelo cabo.
 _Avoid_: quadro, pacote, frame
 
+**Boot**:
+O período entre o ESP32 ligar, ou reiniciar, e desligar. O relógio do ESP32 recomeça a cada boot, então um horário só tem sentido dentro do seu boot.
+_Avoid_: sessão, execução
+
+**STATUS**:
+A mensagem que o ESP32 envia no boot e depois 1 vez por segundo, com sua identificação, a configuração em uso e os contadores. Também serve de confirmação dos comandos da Pi.
+_Avoid_: HELLO, heartbeat, ACK
+
+**Taxa de envio**:
+Quantas amostras de uma fonte o ESP32 entrega à Pi por segundo. Quem escolhe é a Pi.
+_Avoid_: frequência de amostragem (que é a das leituras da IMU)
+
+**Decodificador**:
+O código Python, entregue pela equipe do firmware, que transforma as mensagens recebidas em amostras com o horário da Pi e prepara as mensagens que a Pi envia. Não abre a porta serial.
+_Avoid_: parser, driver
+
+**Leitor da UART**:
+O código da Pi, da Isabela, que abre a porta serial, passa os bytes ao decodificador e entrega as amostras ao gerenciador de eventos.
+_Avoid_: decodificador (para o leitor)
+
 ### Dados
 
 **Fonte**:
@@ -37,11 +57,23 @@ O que o ESP32 entrega à Pi: o estado de uma fonte num instante, com seu horári
 _Avoid_: telemetria (para uma única amostra), pacote, registro
 
 **Amostra de IMU**:
-A média e o pico de aceleração e rotação das leituras de um intervalo.
+A média e o pico de cada eixo de aceleração e rotação das leituras de um intervalo, no referencial do carro.
+
+**Pico**:
+A leitura de maior módulo de um eixo no intervalo de uma amostra de IMU, com o sinal mantido.
+_Avoid_: máximo (que perde o sinal)
+
+**Referencial do carro**:
+Os eixos fixos no carro: x para a frente, y para a esquerda e z para cima. As amostras de IMU sempre usam este referencial, com a gravidade incluída.
+_Avoid_: referencial do sensor (para as amostras)
 
 **Amostra OBD**:
-O conjunto completo dos valores OBD disponíveis num instante. Nunca é um valor isolado.
+O conjunto completo dos valores OBD disponíveis num instante, cada um com sua idade. Nunca é um valor isolado.
 _Avoid_: leitura de PID
+
+**Idade**:
+Há quanto tempo o carro respondeu um valor da amostra OBD, contado até o instante da amostra.
+_Avoid_: atraso, latência
 
 **Telemetria consolidada**:
 A linha por segundo que a Pi grava a partir das amostras. Não é produzida pelo firmware.

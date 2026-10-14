@@ -10,6 +10,7 @@ O planejamento foi concluído em 13/10/2026. O desenvolvimento começa pela fase
 |---|---|
 | Glossário (use estes termos em código, issues e docs) | [`CONTEXT.md`](CONTEXT.md) |
 | Decisões de arquitetura | [`docs/adr/`](docs/adr/) |
+| Protocolo ESP32 ↔ Pi (mensagens, bytes e comportamento) | [`docs/PROTOCOLO.md`](docs/PROTOCOLO.md) |
 | Mapa de decisões em aberto | [issue #1](https://github.com/V-guard-org/firmware_telemetria/issues/1) (etiqueta `wayfinder:map`) |
 | Resultados de pesquisas | ramos `research/*` |
 | Histórico do planejamento (superado) | `docs/PLANO.md`, `docs/notas-equipe.md` |

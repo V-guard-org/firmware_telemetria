@@ -1,0 +1,1312 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Simulador do PC — protótipo</title>
+<!--
+  PROTÓTIPO DESCARTÁVEL do ticket #9 (ramo prototype/simulador). Não vai para o main.
+  Pergunta: o que o simulador do PC controla ao vivo, como são os roteiros e o que ele mostra?
+  Três variantes de tela, trocadas pela barra de baixo ou por ?variant=A|B|C:
+    A · Painel de controle  ·  B · Roteiro primeiro  ·  C · Terminal
+  O firmware, a ECU simulada e o decodificador estão imitados em JavaScript só para dar vida à tela.
+-->
+<style>
+  :root {
+    --bg: #f5f6f8; --panel: #ffffff; --ink: #18212b; --muted: #5b6876; --line: #dde2e8; --soft: #eef1f5;
+    --accent: #2457d6; --truth: #9aa7b6; --rx: #2457d6; --peak: #c2410c;
+    --ok: #15803d; --warn: #b45309; --bad: #b91c1c; --idle: #94a3b8; --info: #0e7490;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0e1319; --panel: #151c25; --ink: #e5ebf1; --muted: #93a1b0; --line: #283340; --soft: #1b2430;
+      --accent: #6b9cff; --truth: #5f6d7d; --rx: #6b9cff; --peak: #fb923c;
+      --ok: #4ade80; --warn: #fbbf24; --bad: #f87171; --idle: #64748b; --info: #22d3ee;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--ink); font: 13px/1.4 var(--sans); }
+  button, select, input, textarea { font: inherit; color: inherit; }
+  h3 { margin: 0 0 6px; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+  .banner { padding: 6px 16px; background: var(--soft); border-bottom: 1px solid var(--line); color: var(--muted); font-size: 12px; }
+  .banner b { color: var(--ink); }
+  .btn, .tg, .seg button {
+    border: 1px solid var(--line); background: var(--panel); border-radius: 6px; padding: 4px 9px; cursor: pointer;
+  }
+  .btn:hover, .tg:hover, .seg button:hover { border-color: var(--accent); }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .tg[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .seg { display: inline-flex; }
+  .seg button { border-radius: 0; padding: 2px 7px; font-size: 12px; }
+  .seg button:first-child { border-radius: 6px 0 0 6px; }
+  .seg button:last-child { border-radius: 0 6px 6px 0; }
+  .seg button + button { border-left: none; }
+  .seg button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .btns { display: flex; flex-wrap: wrap; gap: 6px; }
+  .hint { color: var(--muted); font-size: 11.5px; margin: 6px 0 0; }
+  .chip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px; border-radius: 999px; background: var(--soft); border: 1px solid var(--line); white-space: nowrap; }
+  .chip i { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  canvas { display: block; width: 100%; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; }
+  .kv { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  .kv td { padding: 1px 0; }
+  .kv td:last-child { text-align: right; }
+  .kv tr.sub td { color: var(--muted); padding-top: 6px; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; }
+  .log { font: 11.5px/1.45 var(--mono); max-height: 240px; overflow: auto; }
+  .log div { white-space: pre-wrap; }
+  .log .who { color: var(--muted); }
+  .json { font: 11.5px/1.45 var(--mono); white-space: pre-wrap; word-break: break-word; margin: 0; }
+
+  /* Variante A */
+  .va { display: grid; grid-template-columns: 290px minmax(0, 1fr) 300px; gap: 12px; padding: 12px 16px 70px; }
+  .va .controls { display: flex; flex-direction: column; gap: 10px; }
+  .va .controls section { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; }
+  .sl { display: grid; grid-template-columns: 1fr auto; align-items: center; margin: 4px 0; }
+  .sl input { grid-column: 1 / -1; width: 100%; }
+  .sl output { font-variant-numeric: tabular-nums; color: var(--muted); }
+  .row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 4px 0; }
+  .pids td { padding: 2px 0; }
+  .pids td:first-child { padding-right: 8px; }
+  .va main { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+  .va main canvas { height: 128px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; }
+  .va main canvas.strip { height: 86px; }
+  .va .side { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+  @media (max-width: 1100px) { .va { grid-template-columns: 1fr; } }
+
+  /* Variante B */
+  .vb { padding: 12px 16px 70px; display: flex; flex-direction: column; gap: 10px; }
+  .vb .bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  .vb .bar .time { font: 600 15px var(--mono); margin-left: 4px; }
+  .vb .grid { display: grid; grid-template-columns: 330px minmax(0, 1fr); gap: 12px; }
+  .vb textarea { width: 100%; height: 420px; resize: vertical; font: 12px/1.5 var(--mono); background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px; }
+  .vb .errors { color: var(--bad); font-size: 12px; }
+  .vb main { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+  .vb main canvas { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; height: 120px; }
+  .vb main canvas.timeline { height: 110px; }
+  .vb main canvas.strip { height: 86px; }
+  .vb .foot { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; }
+  .vb details summary { cursor: pointer; color: var(--muted); }
+  @media (max-width: 1000px) { .vb .grid, .vb .foot { grid-template-columns: 1fr; } }
+
+  /* Variante C */
+  .vc { padding: 12px 16px 70px; }
+  .vc pre { margin: 0; padding: 14px 16px; background: #0b0f14; color: #d6dde5; border-radius: 8px; font: 13px/1.35 var(--mono); overflow-x: auto; min-height: 560px; }
+  .vc .k { color: #7dd3fc; } .vc .g { color: #4ade80; } .vc .y { color: #fbbf24; } .vc .r { color: #f87171; } .vc .d { color: #6b7785; } .vc .b { color: #93c5fd; }
+
+  /* Barra de troca de variante (não faz parte do desenho avaliado) */
+  #switcher {
+    position: fixed; left: 50%; bottom: 14px; transform: translateX(-50%); z-index: 50;
+    display: flex; align-items: center; gap: 4px; padding: 4px; border-radius: 999px;
+    background: #111; color: #fff; box-shadow: 0 6px 24px rgba(0,0,0,.35); font-size: 13px;
+  }
+  #switcher button { background: transparent; color: #fff; border: 0; border-radius: 999px; padding: 6px 12px; cursor: pointer; font-size: 15px; }
+  #switcher button:hover { background: #333; }
+  #switcher span { padding: 0 10px; min-width: 220px; text-align: center; }
+</style>
+</head>
+<body>
+<div class="banner">
+  <b>Protótipo descartável · ticket #9.</b>
+  O firmware, a ECU simulada e o decodificador estão imitados em JavaScript só para dar vida à tela; os números são plausíveis, não exatos.
+  Troque a variante na barra de baixo (ou com ← →). <button class="btn" data-act="reset" style="margin-left:8px">Recomeçar do zero</button>
+</div>
+<div id="app"></div>
+<div id="switcher">
+  <button id="sw-prev" title="Variante anterior (←)">‹</button>
+  <span id="sw-label"></span>
+  <button id="sw-next" title="Próxima variante (→)">›</button>
+</div>
+
+<!-- ===================================================================================== -->
+<!-- Módulo puro: carro, IMU_SIM, ECU simulada, firmware imitado, decodificador imitado.    -->
+<!-- Sem DOM. A página chama Model.step() a cada 10 ms e Model.act() a cada botão.          -->
+<!-- ===================================================================================== -->
+<script id="model">
+const Model = (() => {
+  'use strict';
+
+  const DT = 0.01;                 // uma IMU_SIM (0x83) a cada 10 ms
+  const HISTORY_S = 240;
+  const QUEUE_MAX = 64;            // fila de saída do ESP32, em mensagens
+  const G = 9.81;
+
+  const PIDS = [
+    { pid: 0x04, key: 'load',     label: 'Carga do motor',      unit: '%',    period: 1.0 },
+    { pid: 0x05, key: 'coolant',  label: 'Temp. arrefecimento', unit: '°C',   period: 1.0 },
+    { pid: 0x0B, key: 'map',      label: 'Pressão no coletor',  unit: 'kPa',  period: 1.0 },
+    { pid: 0x0C, key: 'rpm',      label: 'Rotação',             unit: 'rpm',  period: 0.2 },
+    { pid: 0x0D, key: 'speed',    label: 'Velocidade',          unit: 'km/h', period: 0.2 },
+    { pid: 0x0F, key: 'iat',      label: 'Temp. ar admissão',   unit: '°C',   period: 1.0 },
+    { pid: 0x11, key: 'throttle', label: 'Acelerador',          unit: '%',    period: 1.0 },
+    { pid: 0x42, key: 'voltage',  label: 'Tensão',              unit: 'V',    period: 1.0 },
+  ];
+  const OBD_STATES = ['ESPERANDO_PI', 'ESCUTANDO', 'DESCOBRINDO', 'LENDO', 'SEM_RESPOSTA',
+                      'VELOCIDADE_ERRADA', 'LINHA_PRESA', 'FALHA_CAN', 'BLOQUEADO'];
+  const WAITING_PI = 0, LISTENING = 1, DISCOVERING = 2, READING = 3, NO_RESPONSE = 4;
+  const IMU_RATES = [100, 50, 25, 20, 10];
+  const OBD_RATES = [1, 2, 5, 10];
+  const EVENTS = {
+    buraco: 'Buraco', lombada: 'Lombada', frenagem: 'Frenagem brusca',
+    curva_esq: 'Curva à esquerda', curva_dir: 'Curva à direita', faixa: 'Troca de faixa',
+  };
+  const OVERRIDE_S = { frenagem: 1.6, curva_esq: 4.0, curva_dir: 4.0, faixa: 3.0 };
+  const GEAR_KMH = [0, 18, 32, 50, 70, 95];
+  const RPM_PER_KMH = [125, 72, 50, 38, 30, 25];
+  const PID_MODE_NAMES = { ok: 'normal', absent: 'ausente', mute: 'mudo' };
+
+  // ---------- utilidades ----------
+  function mulberry32(a) {
+    return function () {
+      a |= 0; a = a + 0x6D2B79F5 | 0;
+      let t = Math.imul(a ^ a >>> 15, 1 | a);
+      t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+      return ((t ^ t >>> 14) >>> 0) / 4294967296;
+    };
+  }
+  function gauss(w) {
+    const u = 1 - w.rand(), v = w.rand();
+    return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+  }
+  const clamp = (x, lo, hi) => Math.max(lo, Math.min(hi, x));
+  const bump = (x, c, s) => Math.exp(-(((x - c) / s) ** 2));
+  function log(w, who, text) {
+    w.log.push({ t: w.t, who, text });
+    if (w.log.length > 400) w.log.splice(0, 100);
+  }
+
+  // ---------- criação ----------
+  function create(seed = 7) {
+    const w = {
+      t: 0, rand: mulberry32(seed),
+      controls: {
+        pedal: 0, brake: 0, steer: 0, ignition: true, noise: true,
+        imuFail: false, imuStop: false, piPing: true, piStalled: false,
+        rateImu: 25, rateObd: 5, ecuDelayMs: 15, ecuLossPct: 0,
+        pidMode: Object.fromEntries(PIDS.map(p => [p.key, 'ok'])),
+      },
+      car: {
+        v: 0, a: 0, rpm: 800, gear: 0, engine: true, crankUntil: -1, ecuSilentUntil: -1,
+        coolant: 72, omega: 0, roll: 0, pitch: 0, transients: [], overrides: [],
+        inputs: { pedal: 0, brake: 0, steer: 0 },
+      },
+      reading: { ax: 0, ay: 0, az: G, gx: 0, gy: 0, gz: 0 },
+      fw: {
+        lastPingAt: -99, rates: { imu: 25, obd: 5 }, queue: [], nextStatusAt: 0,
+        counters: { dropped: 0, rejected: 0, imu_failures: 0, obd_sent: 0, obd_answered: 0,
+                    obd_timeouts: 0, blocked: 0, can_errors: 0, bus_off: 0 },
+        imu: { state: 'OK', consecutive: 0, restartAt: 0, lastSimAt: 0, lastSim: null, lastSimFail: false, slot: 0, buf: [] },
+        obd: { state: WAITING_PI, until: 0, lastReadingAt: -1e9, agenda: [], values: {}, nextReqAt: 0,
+               pending: null, late: [], lastAnyResp: 0, nextSampleAt: 0, disc: null, supported: [] },
+      },
+      dec: {
+        nextPingAt: 0, hasPong: false, lastStatus: null, imuHasValues: false, obdHasValues: false,
+        lastImu: null, lastObd: null, lastObdKeys: null, taxasSent: 0,
+        counters: { lost: 0, corrupt: 0, unsynced: 0, unknown: 0, skipped_values: 0, slow_pongs: 0,
+                    imu: 0, obd: 0, empty: 0, boots: 1 },
+      },
+      hist: {
+        t: [], kmh: [], rpm: [], ax: [], ay: [], az: [], gz: [],
+        rxImu: [], rxObd: [], obdStates: [], imuStates: [], piStates: [{ t: 0, s: 1 }],
+      },
+      script: null,
+      log: [],
+    };
+    log(w, 'simulador', 'Simulador iniciado; firmware com boot novo (0xBEEF)');
+    return w;
+  }
+
+  // ---------- ações (botões e roteiros) ----------
+  function act(w, a, quiet = false) {
+    const c = w.controls, car = w.car, t = w.t;
+    const say = text => { if (!quiet) log(w, 'simulador', text); };
+    switch (a.type) {
+      case 'pedal': c.pedal = clamp(a.value, 0, 1); break;
+      case 'brake': c.brake = clamp(a.value, 0, 1); break;
+      case 'steer': c.steer = clamp(a.value, -1, 1); break;
+      case 'release': c.pedal = 0; c.brake = 0; c.steer = 0; say('Solta acelerador, freio e volante'); break;
+      case 'ignition':
+        c.ignition = a.value;
+        if (!a.value) { car.engine = false; car.crankUntil = -1; }
+        say(a.value ? 'Ignição ligada (motor parado; dê a partida)' : 'Ignição desligada: as centrais param de responder');
+        break;
+      case 'crank':
+        if (!c.ignition) { say('Partida ignorada: a ignição está desligada'); break; }
+        car.engine = false; car.crankUntil = t + 1.0; car.ecuSilentUntil = t + 0.5;
+        say('Partida: as centrais ficam mudas por 0,5 s');
+        break;
+      case 'event':
+        if (a.name in OVERRIDE_S) car.overrides.push({ kind: a.name, t0: t, dur: OVERRIDE_S[a.name] });
+        else car.transients.push({ kind: a.name, t0: t });
+        say('Evento: ' + EVENTS[a.name]);
+        break;
+      case 'pidMode': c.pidMode[a.key] = a.mode; say(`PID ${a.key}: ${PID_MODE_NAMES[a.mode]}`); break;
+      case 'imuFail': c.imuFail = a.value; say(a.value ? 'IMU_SIM com a marca de falha' : 'IMU_SIM sem a marca de falha'); break;
+      case 'imuStop': c.imuStop = a.value; say(a.value ? 'Simulador parou de enviar a 0x83' : 'Simulador voltou a enviar a 0x83'); break;
+      case 'noise': c.noise = a.value; say(a.value ? 'Ruído da IMU ligado' : 'Ruído da IMU desligado'); break;
+      case 'piPing': c.piPing = a.value; say(a.value ? 'Pi volta a mandar PING' : 'Pi para de mandar PING'); break;
+      case 'piStalled': c.piStalled = a.value; say(a.value ? 'Pi travada: não lê nem escreve' : 'Pi destravada'); break;
+      case 'rates':
+        if (a.imu) c.rateImu = a.imu;
+        if (a.obd) c.rateObd = a.obd;
+        say(`Taxas pedidas: IMU ${c.rateImu}/s, OBD ${c.rateObd}/s`);
+        break;
+      case 'ecuDelay': c.ecuDelayMs = a.value; break;
+      case 'ecuLoss': c.ecuLossPct = a.value; break;
+    }
+  }
+
+  // ---------- roteiros ----------
+  const COMMANDS_HELP = [
+    'ignição liga | ignição desliga', 'partida',
+    'acelerador 30%', 'freio 50%', 'volante -20%   (+ esquerda, − direita)', 'solta tudo',
+    'buraco · lombada · frenagem brusca', 'curva esquerda · curva direita · troca de faixa',
+    'pid voltage normal | ausente | mudo',
+    'imu falha liga | desliga', 'imu sem-sinal liga | desliga', 'ruído liga | desliga',
+    'pi ping liga | desliga', 'pi trava | destrava',
+    'taxas imu 50 obd 5', 'atraso 30 ms', 'perda 10%', 'fim',
+  ];
+
+  function parseCommand(cmd) {
+    const c = cmd.toLowerCase().replace(/\s+/g, ' ').trim();
+    let m;
+    if (c === 'fim') return 'fim';
+    if ((m = c.match(/^igni[cç][aã]o (liga|desliga)$/))) return { type: 'ignition', value: m[1] === 'liga' };
+    if (c === 'partida') return { type: 'crank' };
+    if (c === 'solta tudo') return { type: 'release' };
+    if ((m = c.match(/^acelerador (\d+)%$/))) return { type: 'pedal', value: +m[1] / 100 };
+    if ((m = c.match(/^freio (\d+)%$/))) return { type: 'brake', value: +m[1] / 100 };
+    if ((m = c.match(/^volante ([+-]?\d+)%$/))) return { type: 'steer', value: +m[1] / 100 };
+    const ev = { 'buraco': 'buraco', 'lombada': 'lombada', 'frenagem brusca': 'frenagem',
+                 'curva esquerda': 'curva_esq', 'curva direita': 'curva_dir', 'troca de faixa': 'faixa' }[c];
+    if (ev) return { type: 'event', name: ev };
+    if ((m = c.match(/^pid (\w+) (normal|ausente|mudo)$/))) {
+      if (!PIDS.some(p => p.key === m[1])) return null;
+      return { type: 'pidMode', key: m[1], mode: { normal: 'ok', ausente: 'absent', mudo: 'mute' }[m[2]] };
+    }
+    if ((m = c.match(/^imu falha (liga|desliga)$/))) return { type: 'imuFail', value: m[1] === 'liga' };
+    if ((m = c.match(/^imu sem-sinal (liga|desliga)$/))) return { type: 'imuStop', value: m[1] === 'liga' };
+    if ((m = c.match(/^ru[ií]do (liga|desliga)$/))) return { type: 'noise', value: m[1] === 'liga' };
+    if ((m = c.match(/^pi ping (liga|desliga)$/))) return { type: 'piPing', value: m[1] === 'liga' };
+    if ((m = c.match(/^pi (trava|destrava)$/))) return { type: 'piStalled', value: m[1] === 'trava' };
+    if ((m = c.match(/^taxas imu (\d+) obd (\d+)$/))) {
+      const imu = +m[1], obd = +m[2];
+      if (!IMU_RATES.includes(imu) || !OBD_RATES.includes(obd)) return null;
+      return { type: 'rates', imu, obd };
+    }
+    if ((m = c.match(/^atraso (\d+) ms$/))) return { type: 'ecuDelay', value: +m[1] };
+    if ((m = c.match(/^perda (\d+)%$/))) return { type: 'ecuLoss', value: +m[1] };
+    return null;
+  }
+
+  function parseScript(name, text) {
+    const actions = [], errors = [];
+    let duration = 0, end = null;
+    text.split('\n').forEach((raw, i) => {
+      const s = raw.replace(/#.*$/, '').trim();
+      if (!s) return;
+      const m = s.match(/^(\d+):(\d{2}(?:\.\d+)?)\s+(.+)$/);
+      if (!m) { errors.push(`linha ${i + 1}: comece com o tempo, como 0:05`); return; }
+      const at = +m[1] * 60 + +m[2];
+      const a = parseCommand(m[3]);
+      if (a === 'fim') { end = at; return; }
+      if (!a) { errors.push(`linha ${i + 1}: não entendi "${m[3].trim()}"`); return; }
+      actions.push({ at, action: a, text: m[3].trim() });
+      duration = Math.max(duration, at);
+    });
+    actions.sort((x, y) => x.at - y.at);
+    return { name, actions, errors, duration: end ?? duration + 5 };
+  }
+
+  function startScript(w, script) {
+    w.script = { ...script, idx: 0, t0: w.t, done: false };
+    log(w, 'roteiro', `Começou "${script.name}" (${fmtClock(script.duration)})`);
+  }
+  function stopScript(w) {
+    if (w.script && !w.script.done) { w.script.done = true; log(w, 'roteiro', 'Roteiro interrompido'); }
+  }
+  function runScript(w) {
+    const s = w.script;
+    if (!s || s.done) return;
+    const el = w.t - s.t0;
+    while (s.idx < s.actions.length && s.actions[s.idx].at <= el + 1e-9) {
+      const x = s.actions[s.idx++];
+      act(w, x.action, true);
+      log(w, 'roteiro', x.text);
+    }
+    if (el >= s.duration) { s.done = true; log(w, 'roteiro', `Terminou "${s.name}"`); }
+  }
+  function fmtClock(s) {
+    const m = Math.floor(s / 60), r = Math.floor(s % 60);
+    return `${m}:${String(r).padStart(2, '0')}`;
+  }
+
+  // ---------- carro e IMU_SIM ----------
+  function effectiveInputs(w) {
+    const c = w.controls, t = w.t;
+    let pedal = c.pedal, brake = c.brake, steer = c.steer;
+    for (const o of w.car.overrides) {
+      const u = (t - o.t0) / o.dur;
+      if (u < 0 || u > 1) continue;
+      const env = Math.min(1, u / 0.15, (1 - u) / 0.15);
+      if (o.kind === 'frenagem') { pedal = 0; brake = Math.max(brake, 0.9); }
+      if (o.kind === 'curva_esq') steer = 0.6 * env;
+      if (o.kind === 'curva_dir') steer = -0.6 * env;
+      if (o.kind === 'faixa') steer = 0.3 * Math.sin(2 * Math.PI * u);
+    }
+    return { pedal, brake, steer };
+  }
+
+  function gearFor(kmh) {
+    let g = 0;
+    while (g + 1 < GEAR_KMH.length && kmh >= GEAR_KMH[g + 1]) g++;
+    return g;
+  }
+
+  function stepCar(w) {
+    const car = w.car, c = w.controls, t = w.t;
+    const inp = effectiveInputs(w);
+    car.inputs = inp;
+    if (car.crankUntil > 0 && t >= car.crankUntil) { car.crankUntil = -1; car.engine = c.ignition; }
+
+    const v = car.v;
+    let a = (car.engine ? inp.pedal * 4.0 : 0) - inp.brake * 9.0;
+    if (v > 0.05) a -= 0.2 + 0.0012 * v * v + (car.engine && inp.pedal === 0 ? 0.3 : 0);
+    if (v <= 0 && a < 0) a = 0;
+    car.v = Math.max(0, v + a * DT);
+    if (car.v === 0 && a < 0) a = 0;
+    car.a = a;
+
+    const kmh = car.v * 3.6;
+    if (car.crankUntil > 0) car.rpm = 250 + 40 * Math.sin(t * 30);
+    else if (!car.engine) car.rpm = Math.max(0, car.rpm - 2000 * DT);
+    else {
+      car.gear = gearFor(kmh);
+      const target = Math.max(800 + (kmh < 3 ? inp.pedal * 1500 : 0), kmh * RPM_PER_KMH[car.gear] + inp.pedal * 300);
+      car.rpm += (target - car.rpm) * Math.min(1, DT * 6);
+    }
+
+    // volante = intensidade da curva: 100% dá 6 m/s² de aceleração lateral; devagar, vale a geometria do carro
+    const omegaGeo = car.v / 2.6 * inp.steer * 0.6;
+    const omegaLat = car.v > 0.5 ? inp.steer * 6 / car.v : omegaGeo;
+    const omega = Math.abs(omegaGeo) < Math.abs(omegaLat) ? omegaGeo : omegaLat;
+    car.omega = omega;
+    car.coolant += car.engine ? (90 - car.coolant) * DT / 90 : (25 - car.coolant) * DT / 900;
+
+    // atitude da carroceria: rolagem com a aceleração lateral, arfagem com a longitudinal
+    const ay0 = car.v * omega;
+    const rollTarget = 0.5 * ay0, pitchTarget = -0.45 * a;
+    const prevRoll = car.roll, prevPitch = car.pitch;
+    car.roll += (rollTarget - car.roll) * Math.min(1, DT / 0.25);
+    car.pitch += (pitchTarget - car.pitch) * Math.min(1, DT / 0.25);
+
+    const n = c.noise ? 1 : 0;
+    const vib = car.engine ? 0.12 * Math.sin(2 * Math.PI * (car.rpm / 30) * t) : 0;
+    let ax = a + n * 0.05 * gauss(w);
+    let ay = ay0 + n * 0.05 * gauss(w);
+    let az = G + n * (0.05 * gauss(w) + vib);
+    let gx = (car.roll - prevRoll) / DT + n * 0.3 * gauss(w);
+    let gy = (car.pitch - prevPitch) / DT + n * 0.3 * gauss(w);
+    let gz = omega * 180 / Math.PI + n * 0.3 * gauss(w);
+
+    // eventos curtos: buraco e lombada, nos eixos dianteiro e traseiro
+    car.transients = car.transients.filter(tr => t - tr.t0 < 3);
+    for (const tr of car.transients) {
+      const rear = 2.6 / Math.max(car.v, 1.5);
+      for (const [d, k] of [[t - tr.t0, 1], [t - tr.t0 - rear, 0.7]]) {
+        if (d < 0 || d > 0.8) continue;
+        if (tr.kind === 'buraco') {
+          const s = k * (0.5 + Math.min(1, car.v / 14));
+          az += s * (-3 * bump(d, 0.02, 0.012) + 10.5 * bump(d, 0.06, 0.014) - 3 * bump(d, 0.1, 0.02));
+          gy += s * (12 * bump(d, 0.05, 0.02) - 8 * bump(d, 0.1, 0.03));
+        } else if (tr.kind === 'lombada') {
+          const s = k * (0.6 + Math.min(1.2, car.v / 6));
+          az += s * (3.5 * bump(d, 0.15, 0.08) - 2.2 * bump(d, 0.38, 0.09));
+          gy += s * (-14 * bump(d, 0.1, 0.06) + 14 * bump(d, 0.3, 0.07));
+        }
+      }
+    }
+    car.overrides = car.overrides.filter(o => t - o.t0 <= o.dur);
+    w.reading = { ax, ay, az, gx, gy, gz };
+  }
+
+  // Valores que a ECU simulada responde (a verdade do carro, já na resolução do OBD)
+  function ecuValue(w, key) {
+    const car = w.car, c = w.controls, p = car.inputs.pedal;
+    const pct = x => Math.round(Math.round(clamp(x, 0, 100) * 2.55) * 1000 / 255) / 10;
+    switch (key) {
+      case 'rpm': return Math.round(car.rpm * 4) / 4;
+      case 'speed': return Math.round(car.v * 3.6);
+      case 'coolant': return Math.round(car.coolant);
+      case 'iat': return 31;
+      case 'map': return car.engine ? Math.round(30 + 65 * p) : 95;
+      case 'throttle': return pct(14 + 80 * p);
+      case 'load': return car.engine ? pct(18 + 70 * p + (car.a > 0 ? 5 : 0)) : 0;
+      case 'voltage': return car.engine ? 14.1 : (c.ignition ? 12.4 : 12.6);
+    }
+    return 0;
+  }
+
+  // ---------- ECU simulada no CAN ----------
+  function ecuAlive(w) { return w.controls.ignition && w.t >= w.car.ecuSilentUntil; }
+  function ecuReplyAt(w, key) {
+    const c = w.controls;
+    if (!ecuAlive(w)) return null;
+    if (key && c.pidMode[key] !== 'ok') return null;
+    if (w.rand() * 100 < c.ecuLossPct) return null;
+    return w.t + Math.max(1, c.ecuDelayMs + (w.rand() - 0.5) * 8) / 1000;
+  }
+
+  // ---------- firmware imitado ----------
+  function enqueue(w, msg) { w.fw.queue.push(msg); }
+
+  function setObd(w, s) {
+    w.fw.obd.state = s;
+  }
+
+  function stepFirmware(w) {
+    const fw = w.fw, t = w.t, cnt = fw.counters;
+
+    // IMU: uma leitura a cada 10 ms, do último valor da 0x83
+    const imu = fw.imu;
+    const fresh = t - imu.lastSimAt <= 1.0 && imu.lastSim;
+    const ok = fresh && !imu.lastSimFail;
+    if (imu.state === 'OK') {
+      if (ok) { imu.consecutive = 0; imu.buf.push({ t, r: imu.lastSim }); }
+      else {
+        imu.consecutive++; cnt.imu_failures++;
+        if (imu.consecutive >= 10) { imu.state = 'FALHA'; imu.restartAt = t + 1; imu.buf = []; imu.slot = 0; }
+      }
+      if (imu.state === 'OK' && ++imu.slot >= 100 / fw.rates.imu) {
+        imu.slot = 0;
+        if (imu.buf.length) {
+          const mean = {}, peak = {};
+          for (const k of ['ax', 'ay', 'az', 'gx', 'gy', 'gz']) {
+            let s = 0, pk = 0;
+            for (const b of imu.buf) { s += b.r[k]; if (Math.abs(b.r[k]) > Math.abs(pk)) pk = b.r[k]; }
+            mean[k] = s / imu.buf.length; peak[k] = pk;
+          }
+          const tm = imu.buf.reduce((s, b) => s + b.t, 0) / imu.buf.length;
+          enqueue(w, { type: 'IMU', t: tm, mean, peak });
+        }
+        imu.buf = [];
+      }
+    } else if (t >= imu.restartAt) {
+      if (ok) { imu.state = 'OK'; imu.consecutive = 0; imu.slot = 0; }
+      else imu.restartAt = t + 1;
+    }
+
+    // OBD
+    const o = fw.obd;
+    const present = t - fw.lastPingAt < 3;
+    if (o.state !== WAITING_PI && !present) {
+      if (o.state === READING) o.lastReadingAt = t;
+      setObd(w, WAITING_PI); o.values = {}; o.pending = null; o.late = [];
+    }
+    switch (o.state) {
+      case WAITING_PI:
+        if (present) { setObd(w, LISTENING); o.until = t + 1; }
+        break;
+      case LISTENING:
+        if (t >= o.until) { setObd(w, DISCOVERING); o.disc = { at: t, replyAt: ecuReplyAt(w, null) }; cnt.obd_sent++; }
+        break;
+      case DISCOVERING:
+        if (o.disc.replyAt !== null && t >= o.disc.replyAt && o.disc.replyAt <= o.disc.at + 0.05) {
+          cnt.obd_answered++;
+          o.supported = PIDS.filter(p => w.controls.pidMode[p.key] !== 'absent').map(p => p.key);
+          o.agenda = PIDS.filter(p => o.supported.includes(p.key)).map(p => ({ key: p.key, period: p.period, last: -1e9, faults: 0 }));
+          setObd(w, READING); o.lastAnyResp = t; o.nextReqAt = t + 0.05; o.nextSampleAt = t + 1 / fw.rates.obd;
+          o.values = {}; o.late = [];
+        } else if (t >= o.disc.at + 0.05) {
+          cnt.obd_timeouts++;
+          setObd(w, NO_RESPONSE); o.until = t + (t - o.lastReadingAt > 60 ? 10 : 2);
+        }
+        break;
+      case READING: {
+        for (const l of o.late.filter(l => t >= l.at)) o.values[l.key] = { v: ecuValue(w, l.key), at: t };
+        o.late = o.late.filter(l => t < l.at);
+        if (o.pending) {
+          const p = o.pending, entry = o.agenda.find(e => e.key === p.key);
+          if (p.replyAt !== null && t >= p.replyAt && p.replyAt <= p.sentAt + 0.05) {
+            cnt.obd_answered++; o.lastAnyResp = t; if (entry) entry.faults = 0;
+            o.values[p.key] = { v: ecuValue(w, p.key), at: t }; o.pending = null;
+          } else if (t >= p.sentAt + 0.05) {
+            cnt.obd_timeouts++;
+            if (p.replyAt !== null) o.late.push({ key: p.key, at: p.replyAt });
+            if (entry && ++entry.faults >= 5) {
+              o.agenda = o.agenda.filter(e => e !== entry); delete o.values[p.key];
+            }
+            o.pending = null;
+          }
+        }
+        if (!o.pending && t >= o.nextReqAt && o.agenda.length) {
+          let best = null, lag = 0;
+          for (const e of o.agenda) { const l = (t - e.last) - e.period; if (l >= 0 && (!best || l > lag)) { best = e; lag = l; } }
+          if (best) {
+            best.last = t; cnt.obd_sent++;
+            o.pending = { key: best.key, sentAt: t, replyAt: ecuReplyAt(w, best.key) };
+            o.nextReqAt = t + 0.05;
+          }
+        }
+        if (o.agenda.length && t - o.lastAnyResp > 2) {
+          o.lastReadingAt = t; setObd(w, NO_RESPONSE); o.until = t + 2;
+          o.values = {}; o.pending = null; o.late = [];
+          break;
+        }
+        if (t >= o.nextSampleAt) {
+          o.nextSampleAt += 1 / fw.rates.obd;
+          if (o.nextSampleAt < t) o.nextSampleAt = t + 1 / fw.rates.obd;
+          const keys = PIDS.map(p => p.key).filter(k => k in o.values);
+          if (keys.length) {
+            const values = {}, age = {};
+            for (const k of keys) { values[k] = o.values[k].v; age[k] = Math.min(65535, Math.round((t - o.values[k].at) * 1000)); }
+            enqueue(w, { type: 'OBD', t, values, age });
+          }
+        }
+        break;
+      }
+      case NO_RESPONSE:
+        if (t >= o.until) { setObd(w, LISTENING); o.until = t + 1; }
+        break;
+    }
+
+    // STATUS, 1 vez por segundo
+    if (t >= fw.nextStatusAt) {
+      fw.nextStatusAt += 1;
+      enqueue(w, { type: 'STATUS', t, obd: o.state, imu: imu.state === 'OK' ? 0 : 1,
+                   rateImu: fw.rates.imu, rateObd: fw.rates.obd, counters: { ...cnt }, pids: o.supported.slice() });
+    }
+  }
+
+  // ---------- a Pi: este programa, com o decodificador ----------
+  function stepPi(w) {
+    const c = w.controls, d = w.dec, t = w.t;
+    if (c.piStalled) return;
+    if (t >= d.nextPingAt) {
+      d.nextPingAt = t + 1;
+      if (c.piPing) {
+        w.fw.lastPingAt = t;
+        if (!d.hasPong) { d.hasPong = true; log(w, 'decodificador', '1º PONG deste boot: horário sincronizado'); }
+      }
+    }
+  }
+
+  function deliver(w) {
+    const q = w.fw.queue;
+    if (w.controls.piStalled) {
+      while (q.length > QUEUE_MAX) {
+        let i = q.findIndex(m => m.type === 'IMU' || m.type === 'OBD');
+        if (i < 0) i = 0;
+        q.splice(i, 1); w.fw.counters.dropped++;
+      }
+      return;
+    }
+    for (const m of q) receive(w, m);
+    q.length = 0;
+  }
+
+  function emitEmpty(w, source, t) {
+    const d = w.dec;
+    if (source === 'obd') { w.hist.rxObd.push({ t, empty: true }); d.obdHasValues = false; d.lastObd = { t, sample: {} }; d.lastObdKeys = null; }
+    else { w.hist.rxImu.push({ t, empty: true }); d.imuHasValues = false; d.lastImu = { t, sample: {} }; }
+    d.counters.empty++;
+    log(w, 'decodificador', `Amostra vazia {} da fonte ${source}`);
+  }
+
+  function receive(w, m) {
+    const d = w.dec, h = w.hist, c = w.controls;
+    const synced = d.hasPong && d.lastStatus;
+    switch (m.type) {
+      case 'STATUS': {
+        const prev = d.lastStatus;
+        d.lastStatus = m;
+        if (!prev || prev.obd !== m.obd) {
+          h.obdStates.push({ t: m.t, s: m.obd });
+          if (prev) log(w, 'decodificador', `STATUS: OBD ${OBD_STATES[prev.obd]} → ${OBD_STATES[m.obd]}`);
+        }
+        if (!prev || prev.imu !== m.imu) {
+          h.imuStates.push({ t: m.t, s: m.imu });
+          if (prev) log(w, 'decodificador', `STATUS: IMU ${m.imu ? 'FALHA' : 'ok'}`);
+        }
+        if (m.rateImu !== c.rateImu || m.rateObd !== c.rateObd) {
+          w.fw.rates = { imu: c.rateImu, obd: c.rateObd }; d.taxasSent++;
+          log(w, 'decodificador', `STATUS com taxas ${m.rateImu}/${m.rateObd}: envia TAXAS ${c.rateImu}/${c.rateObd}`);
+        } else if (prev && (prev.rateImu !== m.rateImu || prev.rateObd !== m.rateObd)) {
+          log(w, 'decodificador', `STATUS confirma as taxas ${m.rateImu}/${m.rateObd}`);
+        }
+        if (m.obd !== READING && d.obdHasValues) emitEmpty(w, 'obd', m.t);
+        if (m.imu === 1 && d.imuHasValues) emitEmpty(w, 'imu', m.t);
+        break;
+      }
+      case 'IMU':
+        if (!synced) { d.counters.unsynced++; break; }
+        h.rxImu.push({ t: m.t, m: m.mean, p: m.peak });
+        d.counters.imu++; d.imuHasValues = true;
+        d.lastImu = { t: m.t, mean: m.mean, peak: m.peak };
+        break;
+      case 'OBD': {
+        if (!synced) { d.counters.unsynced++; break; }
+        h.rxObd.push({ t: m.t, v: m.values, age: m.age });
+        d.counters.obd++; d.obdHasValues = true;
+        const keys = Object.keys(m.values);
+        if (d.lastObdKeys) {
+          for (const k of d.lastObdKeys) if (!keys.includes(k)) log(w, 'decodificador', `OBD: "${k}" sumiu da amostra`);
+        }
+        d.lastObdKeys = keys;
+        d.lastObd = { t: m.t, sample: { ...m.values, age_ms: { ...m.age } } };
+        break;
+      }
+    }
+  }
+
+  // ---------- histórico para os gráficos ----------
+  function lowerBound(arr, x, f = v => v) {
+    let lo = 0, hi = arr.length;
+    while (lo < hi) { const mid = (lo + hi) >> 1; if (f(arr[mid]) < x) lo = mid + 1; else hi = mid; }
+    return lo;
+  }
+  function record(w) {
+    const h = w.hist, car = w.car, r = w.reading, stop = w.controls.imuStop;
+    h.t.push(w.t); h.kmh.push(car.v * 3.6); h.rpm.push(car.rpm);
+    h.ax.push(stop ? NaN : r.ax); h.ay.push(stop ? NaN : r.ay); h.az.push(stop ? NaN : r.az); h.gz.push(stop ? NaN : r.gz);
+    const pi = w.controls.piPing && !w.controls.piStalled ? 1 : 0;
+    if (h.piStates[h.piStates.length - 1].s !== pi) h.piStates.push({ t: w.t, s: pi });
+    if (h.t.length % 1000 === 0 && h.t[0] < w.t - HISTORY_S) {
+      const cut = w.t - HISTORY_S, i = lowerBound(h.t, cut);
+      for (const k of ['t', 'kmh', 'rpm', 'ax', 'ay', 'az', 'gz']) h[k].splice(0, i);
+      for (const k of ['rxImu', 'rxObd']) h[k].splice(0, lowerBound(h[k], cut, e => e.t));
+      for (const k of ['obdStates', 'imuStates', 'piStates']) h[k].splice(0, Math.max(0, lowerBound(h[k], cut, e => e.t) - 1));
+    }
+  }
+
+  // ---------- passo de 10 ms ----------
+  function step(w) {
+    w.t = Math.round((w.t + DT) * 1000) / 1000;
+    runScript(w);
+    stepCar(w);
+    if (!w.controls.imuStop) {
+      const imu = w.fw.imu;
+      imu.lastSimAt = w.t; imu.lastSim = w.reading; imu.lastSimFail = w.controls.imuFail;
+    }
+    stepPi(w);
+    stepFirmware(w);
+    deliver(w);
+    record(w);
+  }
+
+  return {
+    DT, PIDS, OBD_STATES, IMU_RATES, OBD_RATES, EVENTS, PID_MODE_NAMES, COMMANDS_HELP,
+    create, step, act, parseScript, startScript, stopScript, lowerBound, fmtClock,
+    ecuValue, ecuAlive,
+  };
+})();
+
+// Roteiros prontos. Cada linha: tempo (m:ss) e um comando, o mesmo que um botão da tela.
+const SCRIPTS = {
+  'Volta no bairro': `# Volta no bairro: trajeto urbano com os eventos de direção
+0:00 ignição liga
+0:00 solta tudo
+0:01 partida
+0:04 acelerador 30%
+0:11 acelerador 8%
+0:16 curva esquerda
+0:23 buraco
+0:27 acelerador 20%
+0:33 troca de faixa
+0:39 acelerador 0%
+0:39 freio 15%
+0:44 freio 0%
+0:45 lombada
+0:47 acelerador 30%
+0:56 acelerador 8%
+1:01 frenagem brusca
+1:04 acelerador 0%
+1:04 freio 30%
+1:10 freio 0%
+1:15 fim`,
+  'Liga e desliga': `# Liga e desliga: partida, ignição desligada e a volta do OBD
+0:00 solta tudo
+0:00 ignição desliga
+0:05 ignição liga
+0:07 partida
+0:10 acelerador 30%
+0:18 acelerador 0%
+0:18 freio 30%
+0:24 freio 0%
+0:27 ignição desliga
+0:42 ignição liga
+0:44 partida
+0:55 fim`,
+  'Falhas': `# Falhas: PID mudo, IMU em falha, IMU sem sinal, Pi sumindo e travando
+0:00 ignição liga
+0:00 solta tudo
+0:01 acelerador 18%
+0:05 pid voltage mudo
+0:13 imu falha liga
+0:15 imu falha desliga
+0:20 imu sem-sinal liga
+0:23 imu sem-sinal desliga
+0:28 pi ping desliga
+0:36 pi ping liga
+0:44 pi trava
+0:50 pi destrava
+0:55 taxas imu 100 obd 10
+1:02 taxas imu 25 obd 5
+1:05 pid voltage normal
+1:10 fim`,
+};
+</script>
+
+<!-- ===================================================================================== -->
+<!-- A página: três variantes de tela sobre o mesmo modelo.                                 -->
+<!-- ===================================================================================== -->
+<script>
+'use strict';
+
+let world = Model.create();
+const $ = (sel, root = document) => root.querySelector(sel);
+const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
+const fmt = (x, d = 1) => (x === undefined || x === null || Number.isNaN(x)) ? '—' : x.toFixed(d);
+const css = () => Object.fromEntries(['bg', 'panel', 'ink', 'muted', 'line', 'soft', 'accent', 'truth', 'rx', 'peak', 'ok', 'warn', 'bad', 'idle', 'info']
+  .map(k => [k, getComputedStyle(document.documentElement).getPropertyValue('--' + k).trim()]));
+let C = css();
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { C = css(); });
+
+const OBD_COLOR = s => [C.idle, C.info, C.warn, C.ok, C.bad, C.bad, C.bad, C.bad, C.bad][s];
+const OBD_SHORT = ['ESPERANDO_PI', 'ESCUTANDO', 'DESCOBRINDO', 'LENDO', 'SEM_RESPOSTA', 'VEL_ERRADA', 'LINHA_PRESA', 'FALHA_CAN', 'BLOQUEADO'];
+
+// ---------------- gráficos em canvas ----------------
+function niceStep(range, n) {
+  const raw = range / n, p = Math.pow(10, Math.floor(Math.log10(raw))), f = raw / p;
+  return (f < 1.5 ? 1 : f < 3.5 ? 2 : f < 7.5 ? 5 : 10) * p;
+}
+function setupCanvas(cv) {
+  const dpr = window.devicePixelRatio || 1, W = cv.clientWidth, H = cv.clientHeight;
+  if (cv.width !== Math.round(W * dpr) || cv.height !== Math.round(H * dpr)) { cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); }
+  const g = cv.getContext('2d');
+  g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, W, H);
+  return { g, W, H };
+}
+
+// o: { title, legend:[[label,color,shape]], t0, t1, xLabel(t), lines:[{t,y,color,width}], dots:[{pts,color,shape}], marks:[t], minSpan, include:[] }
+function drawChart(cv, o) {
+  const { g, W, H } = setupCanvas(cv);
+  const L = 46, R = 10, T = 22, B = 18, pw = W - L - R, ph = H - T - B;
+  if (pw <= 10 || ph <= 10) return;
+  let lo = Infinity, hi = -Infinity;
+  for (const s of o.lines) {
+    const i0 = Model.lowerBound(s.t, o.t0);
+    for (let i = i0; i < s.t.length && s.t[i] <= o.t1; i++) { const v = s.y[i]; if (v < lo) lo = v; if (v > hi) hi = v; }
+  }
+  for (const s of o.dots) for (const [t, v] of s.pts) if (t >= o.t0 && t <= o.t1) { if (v < lo) lo = v; if (v > hi) hi = v; }
+  for (const v of (o.include || [])) { if (v < lo) lo = v; if (v > hi) hi = v; }
+  if (!isFinite(lo)) { lo = 0; hi = 1; }
+  const span = Math.max(hi - lo, o.minSpan || 1), mid = (hi + lo) / 2;
+  lo = mid - span * 0.56; hi = mid + span * 0.56;
+  const X = t => L + (t - o.t0) / (o.t1 - o.t0) * pw;
+  const Y = v => T + (1 - (v - lo) / (hi - lo)) * ph;
+
+  g.font = '10px ' + getComputedStyle(document.body).fontFamily;
+  g.lineWidth = 1; g.strokeStyle = C.line; g.fillStyle = C.muted;
+  const ys = niceStep(hi - lo, 4);
+  for (let v = Math.ceil(lo / ys) * ys; v <= hi; v += ys) {
+    const y = Math.round(Y(v)) + 0.5;
+    g.beginPath(); g.moveTo(L, y); g.lineTo(L + pw, y); g.stroke();
+    g.textAlign = 'right'; g.fillText(Math.abs(v) < 1e-9 ? '0' : +v.toFixed(2) + '', L - 5, y + 3);
+  }
+  const xs = o.xStep || 5;
+  g.textAlign = 'center';
+  for (let s = Math.ceil(o.t0 / xs) * xs; s <= o.t1 + 1e-9; s += xs) {
+    const x = Math.round(X(s)) + 0.5;
+    g.beginPath(); g.moveTo(x, T + ph); g.lineTo(x, T + ph + 3); g.stroke();
+    g.fillText(o.xLabel(s), x, H - 4);
+  }
+  g.fillStyle = C.ink; g.textAlign = 'left'; g.font = '600 11px ' + getComputedStyle(document.body).fontFamily;
+  g.fillText(o.title, L, 14);
+  let lx = L + g.measureText(o.title).width + 14;
+  g.font = '11px ' + getComputedStyle(document.body).fontFamily;
+  for (const [label, color, shape] of (o.legend || [])) {
+    glyph(g, shape, lx + 5, 10, color); g.fillStyle = C.muted; g.fillText(label, lx + 13, 14);
+    lx += g.measureText(label).width + 26;
+  }
+
+  g.save(); g.beginPath(); g.rect(L, T, pw, ph); g.clip();
+  for (const t of (o.marks || [])) {
+    if (t < o.t0 || t > o.t1) continue;
+    const x = Math.round(X(t)) + 0.5;
+    g.setLineDash([3, 3]); g.strokeStyle = C.bad; g.beginPath(); g.moveTo(x, T); g.lineTo(x, T + ph); g.stroke(); g.setLineDash([]);
+    g.fillStyle = C.bad; g.textAlign = 'left'; g.fillText('{}', x + 3, T + 10);
+  }
+  for (const s of o.lines) {
+    g.strokeStyle = s.color; g.lineWidth = s.width || 1; g.beginPath();
+    let pen = false;
+    const i0 = Math.max(0, Model.lowerBound(s.t, o.t0) - 1);
+    for (let i = i0; i < s.t.length && s.t[i - 1 < 0 ? 0 : i - 1] <= o.t1; i++) {
+      const v = s.y[i];
+      if (Number.isNaN(v)) { pen = false; continue; }
+      const x = X(s.t[i]), y = Y(v);
+      if (pen) g.lineTo(x, y); else { g.moveTo(x, y); pen = true; }
+    }
+    g.stroke();
+  }
+  for (const s of o.dots) for (const [t, v] of s.pts) if (t >= o.t0 - 1 && t <= o.t1 + 1) glyph(g, s.shape, X(t), Y(v), s.color);
+  g.restore();
+}
+function glyph(g, shape, x, y, color) {
+  g.fillStyle = color; g.strokeStyle = color; g.lineWidth = 1.5;
+  if (shape === 'line') { g.beginPath(); g.moveTo(x - 6, y); g.lineTo(x + 6, y); g.stroke(); return; }
+  g.globalAlpha = 0.75;
+  if (shape === 'tri') { g.beginPath(); g.moveTo(x, y - 2.6); g.lineTo(x + 2.4, y + 1.8); g.lineTo(x - 2.4, y + 1.8); g.closePath(); g.fill(); }
+  else { g.beginPath(); g.arc(x, y, 2, 0, 2 * Math.PI); g.fill(); }
+  g.globalAlpha = 1;
+}
+
+// Faixas de estado: OBD (pelo STATUS), IMU (pelo STATUS) e PING da Pi.
+function drawStrips(cv, t0, t1, xLabel, xStep) {
+  const { g, W, H } = setupCanvas(cv);
+  const L = 92, R = 10, T = 6, B = 18, pw = W - L - R;
+  const X = t => L + (Math.max(t0, Math.min(t1, t)) - t0) / (t1 - t0) * pw;
+  const h = world.hist;
+  const rows = [
+    ['OBD (STATUS)', h.obdStates, s => OBD_COLOR(s), s => OBD_SHORT[s]],
+    ['IMU (STATUS)', h.imuStates, s => s ? C.bad : C.ok, s => s ? 'FALHA' : 'ok'],
+    ['PING da Pi', h.piStates, s => s ? C.ok : C.idle, s => s ? 'presente' : 'sem PING'],
+  ];
+  const rh = (H - T - B) / rows.length;
+  const fam = getComputedStyle(document.body).fontFamily;
+  rows.forEach(([name, segs, color, label], r) => {
+    const y = T + r * rh;
+    g.fillStyle = C.muted; g.font = '11px ' + fam; g.textAlign = 'left'; g.fillText(name, 6, y + rh / 2 + 4);
+    g.fillStyle = C.soft; g.fillRect(L, y + 3, pw, rh - 6);
+    for (let i = 0; i < segs.length; i++) {
+      const a = segs[i].t, b = i + 1 < segs.length ? segs[i + 1].t : world.t;
+      if (b < t0 || a > t1) continue;
+      const xa = X(a), xb = X(b);
+      g.fillStyle = color(segs[i].s); g.globalAlpha = 0.85; g.fillRect(xa, y + 3, Math.max(1, xb - xa), rh - 6); g.globalAlpha = 1;
+      if (xb - xa > 60) { g.fillStyle = '#fff'; g.font = '600 10px ' + fam; g.fillText(label(segs[i].s), xa + 5, y + rh / 2 + 3.5); }
+    }
+  });
+  g.fillStyle = C.muted; g.font = '10px ' + fam; g.textAlign = 'center';
+  for (let s = Math.ceil(t0 / xStep) * xStep; s <= t1 + 1e-9; s += xStep) g.fillText(xLabel(s), X(s), H - 4);
+}
+
+// Séries comuns: enviado (linha fina) × recebido pela Pi (pontos).
+function seriesFor(key, kind) {
+  const h = world.hist;
+  if (kind === 'obd') {
+    return {
+      lines: [{ t: h.t, y: h[key === 'speed' ? 'kmh' : 'rpm'], color: C.truth, width: 1.5 }],
+      dots: [{ pts: h.rxObd.filter(e => !e.empty && key in e.v).map(e => [e.t, e.v[key]]), color: C.rx, shape: 'dot' }],
+      marks: h.rxObd.filter(e => e.empty).map(e => e.t),
+      legend: [['carro (ECU simulada)', C.truth, 'line'], ['recebido pela Pi', C.rx, 'dot']],
+    };
+  }
+  return {
+    lines: [{ t: h.t, y: h[key], color: C.truth, width: 1.5 }],
+    dots: [
+      { pts: h.rxImu.filter(e => !e.empty).map(e => [e.t, e.m[key]]), color: C.rx, shape: 'dot' },
+      { pts: h.rxImu.filter(e => !e.empty).map(e => [e.t, e.p[key]]), color: C.peak, shape: 'tri' },
+    ],
+    marks: h.rxImu.filter(e => e.empty).map(e => e.t),
+    legend: [['0x83 enviada (100/s)', C.truth, 'line'], ['média', C.rx, 'dot'], ['pico', C.peak, 'tri']],
+  };
+}
+
+// ---------------- pedaços de tela comuns ----------------
+function statusChips() {
+  const d = world.dec, st = d.lastStatus, c = world.controls, s = world.script;
+  const obd = st ? st.obd : 0, piOk = c.piPing && !c.piStalled;
+  const ratesPending = st && (st.rateImu !== c.rateImu || st.rateObd !== c.rateObd);
+  return [
+    chip(piOk ? C.ok : C.idle, c.piStalled ? 'Pi travada' : c.piPing ? 'Pi manda PING' : 'Pi sem PING'),
+    chip(OBD_COLOR(obd), 'OBD: ' + Model.OBD_STATES[obd]),
+    chip(st && st.imu ? C.bad : C.ok, 'IMU: ' + (st && st.imu ? 'FALHA' : 'ok')),
+    chip(ratesPending ? C.warn : C.info, `Taxas em uso: IMU ${st ? st.rateImu : '—'}/s · OBD ${st ? st.rateObd : '—'}/s` + (ratesPending ? ` (pedido ${c.rateImu}/${c.rateObd})` : '')),
+    chip(c.ignition ? (world.car.engine ? C.ok : C.warn) : C.idle, c.ignition ? (world.car.engine ? 'Motor ligado' : world.car.crankUntil > 0 ? 'Dando partida' : 'Ignição ligada, motor parado') : 'Ignição desligada'),
+    s && !s.done ? chip(C.accent, `Roteiro: ${s.name} ${Model.fmtClock(world.t - s.t0)}/${Model.fmtClock(s.duration)}`) : '',
+  ].join('');
+}
+const chip = (color, text) => `<span class="chip"><i style="background:${color}"></i>${text}</span>`;
+
+function countersHtml() {
+  const st = world.dec.lastStatus, e = st ? st.counters : world.fw.counters, d = world.dec.counters;
+  const rows = [
+    ['sub', 'ESP32 (pelo STATUS)'],
+    ['descartadas', e.dropped], ['rejeitadas', e.rejected], ['falhas_imu', e.imu_failures],
+    ['obd_enviadas', e.obd_sent], ['obd_respondidas', e.obd_answered], ['obd_sem_resposta', e.obd_timeouts],
+    ['sub', 'Decodificador (stats)'],
+    ['imu', d.imu], ['obd', d.obd], ['empty (vazias)', d.empty], ['lost (perdidas no cabo)', d.lost], ['unsynced', d.unsynced],
+  ];
+  return '<table class="kv">' + rows.map(([k, v]) => k === 'sub' ? `<tr class="sub"><td colspan="2">${v}</td></tr>` : `<tr><td>${k}</td><td>${v}</td></tr>`).join('') + '</table>';
+}
+
+function lastSampleHtml() {
+  const o = world.dec.lastObd;
+  if (!o) return '<p class="hint">Nenhuma amostra OBD ainda.</p>';
+  const s = o.sample, keys = Object.keys(s).filter(k => k !== 'age_ms');
+  if (!keys.length) return `<pre class="json">("obd", ${o.t.toFixed(2)}, {})</pre>`;
+  const INT_KEYS = ['coolant', 'map', 'speed', 'iat'];
+  const py = (k, v) => INT_KEYS.includes(k) ? String(v) : Number.isInteger(v) ? v.toFixed(1) : String(v);
+  const vals = keys.map(k => `  "${k}": ${py(k, s[k])}`).join(',\n');
+  const ages = keys.map(k => `"${k}": ${s.age_ms[k]}`).join(', ');
+  return `<pre class="json">("obd", ${o.t.toFixed(2)}, {\n${vals},\n  "age_ms": {${ages}}\n})</pre>`;
+}
+
+function logHtml(n = 60) {
+  return world.log.slice(-n).reverse().map(e => `<div><span class="who">${fmt(e.t, 2).padStart(7)} ${e.who}</span>  ${escapeHtml(e.text)}</div>`).join('');
+}
+const escapeHtml = s => s.replace(/[&<>]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[ch]);
+
+function applyAct(a, quiet) { Model.act(world, a, quiet); }
+
+// ======================================================================================
+// Variante A · Painel de controle
+// ======================================================================================
+const VariantA = {
+  name: 'Painel de controle',
+  mount(app) {
+    const P = Model.PIDS;
+    app.innerHTML = `
+    <div class="va">
+      <aside class="controls">
+        <section><h3>Motorista</h3>
+          <label class="sl">Acelerador <output id="o-pedal"></output><input type="range" id="pedal" min="0" max="100" step="1"></label>
+          <label class="sl">Freio <output id="o-brake"></output><input type="range" id="brake" min="0" max="100" step="1"></label>
+          <label class="sl">Volante <output id="o-steer"></output><input type="range" id="steer" min="-100" max="100" step="1"></label>
+          <div class="row"><span class="hint" style="margin:0">direita ← → esquerda</span><button class="btn" data-act="release">Soltar tudo</button></div>
+        </section>
+        <section><h3>Eventos de direção</h3>
+          <div class="btns">${Object.entries(Model.EVENTS).map(([k, v]) => `<button class="btn" data-ev="${k}">${v}</button>`).join('')}</div>
+          <p class="hint">Buraco e lombada mexem no az e no gy; frenagem, curva e troca de faixa assumem o pedal ou o volante por alguns segundos.</p>
+        </section>
+        <section><h3>Carro e centrais (ECU simulada)</h3>
+          <div class="row"><button class="tg" data-tg="ignition">Ignição</button><button class="btn" data-act="crank">Dar partida</button></div>
+          <label class="sl">Atraso da resposta <output id="o-delay"></output><input type="range" id="delay" min="0" max="80" step="1"></label>
+          <label class="sl">Respostas perdidas <output id="o-loss"></output><input type="range" id="loss" min="0" max="50" step="1"></label>
+        </section>
+        <section><h3>PIDs</h3>
+          <table class="pids">${P.map(p => `<tr><td>${p.key}</td><td><span class="seg" data-pid="${p.key}">
+            <button data-mode="ok">normal</button><button data-mode="absent">ausente</button><button data-mode="mute">mudo</button></span></td></tr>`).join('')}</table>
+          <p class="hint"><b>Ausente</b>: a central não anuncia o PID; vale na próxima descoberta. <b>Mudo</b>: anuncia, mas não responde; sai da agenda depois de 5 faltas.</p>
+        </section>
+        <section><h3>IMU simulada (0x83)</h3>
+          <div class="btns"><button class="tg" data-tg="imuFail">Leitura com falha</button><button class="tg" data-tg="imuStop">Parar a 0x83</button><button class="tg" data-tg="noise">Ruído</button></div>
+          <p class="hint">Com falha, ou 1 s sem 0x83, a leitura falha; 10 seguidas põem a IMU em FALHA.</p>
+        </section>
+        <section><h3>Pi (este programa)</h3>
+          <div class="btns"><button class="tg" data-tg="piPing">Manda PING</button><button class="tg" data-tg="piStalled">Pi travada</button></div>
+          <div class="row">Taxa da IMU <select id="rate-imu">${Model.IMU_RATES.map(r => `<option>${r}</option>`).join('')}</select></div>
+          <div class="row">Taxa do OBD <select id="rate-obd">${Model.OBD_RATES.map(r => `<option>${r}</option>`).join('')}</select></div>
+        </section>
+        <section><h3>Roteiro</h3>
+          <div class="row"><select id="a-script">${Object.keys(SCRIPTS).map(n => `<option>${n}</option>`).join('')}</select>
+          <button class="btn primary" data-act="run">Rodar</button><button class="btn" data-act="stop">Parar</button></div>
+          <p class="hint">Um roteiro aperta os mesmos botões desta tela em horários fixos.</p>
+        </section>
+      </aside>
+      <main>
+        <div class="chips" id="a-chips"></div>
+        <canvas id="c-speed"></canvas><canvas id="c-rpm"></canvas>
+        <canvas id="c-ax"></canvas><canvas id="c-az"></canvas><canvas id="c-gz"></canvas>
+        <canvas id="c-strip" class="strip"></canvas>
+        <p class="hint">Janela dos últimos 30 s. Linha fina: o que o simulador mandou. Pontos: o que chegou à Pi pelo decodificador, no horário da amostra. "{}": amostra vazia.</p>
+      </main>
+      <aside class="side">
+        <div class="card"><h3>Última amostra OBD, como chega ao update()</h3><div id="a-sample"></div></div>
+        <div class="card"><h3>Contadores</h3><div id="a-counters"></div></div>
+        <div class="card"><h3>Registro</h3><div class="log" id="a-log"></div></div>
+      </aside>
+    </div>`;
+    const bindRange = (id, fn) => $('#' + id).addEventListener('input', e => fn(+e.target.value));
+    bindRange('pedal', v => applyAct({ type: 'pedal', value: v / 100 }, true));
+    bindRange('brake', v => applyAct({ type: 'brake', value: v / 100 }, true));
+    bindRange('steer', v => applyAct({ type: 'steer', value: v / 100 }, true));
+    bindRange('delay', v => applyAct({ type: 'ecuDelay', value: v }, true));
+    bindRange('loss', v => applyAct({ type: 'ecuLoss', value: v }, true));
+    $('#rate-imu').addEventListener('change', e => applyAct({ type: 'rates', imu: +e.target.value }));
+    $('#rate-obd').addEventListener('change', e => applyAct({ type: 'rates', obd: +e.target.value }));
+    app.addEventListener('click', e => {
+      const b = e.target.closest('button'); if (!b) return;
+      if (b.dataset.ev) applyAct({ type: 'event', name: b.dataset.ev });
+      if (b.dataset.tg) applyAct({ type: b.dataset.tg, value: !world.controls[b.dataset.tg] });
+      if (b.dataset.mode) applyAct({ type: 'pidMode', key: b.parentElement.dataset.pid, mode: b.dataset.mode });
+      if (b.dataset.act === 'release') applyAct({ type: 'release' });
+      if (b.dataset.act === 'crank') applyAct({ type: 'crank' });
+      if (b.dataset.act === 'run') { const n = $('#a-script').value; Model.startScript(world, Model.parseScript(n, SCRIPTS[n])); }
+      if (b.dataset.act === 'stop') Model.stopScript(world);
+    });
+  },
+  render() {
+    const c = world.controls, ci = world.car.inputs;
+    const setRange = (id, v, out) => { const el = $('#' + id); if (document.activeElement !== el) el.value = v; $('#o-' + id).textContent = out; };
+    setRange('pedal', Math.round(ci.pedal * 100), Math.round(ci.pedal * 100) + '%');
+    setRange('brake', Math.round(ci.brake * 100), Math.round(ci.brake * 100) + '%');
+    setRange('steer', Math.round(ci.steer * 100), Math.round(ci.steer * 100) + '%');
+    setRange('delay', c.ecuDelayMs, c.ecuDelayMs + ' ms');
+    setRange('loss', c.ecuLossPct, c.ecuLossPct + '%');
+    $$('[data-tg]').forEach(b => b.setAttribute('aria-pressed', !!c[b.dataset.tg]));
+    $$('[data-pid]').forEach(s => $$('button', s).forEach(b => b.setAttribute('aria-pressed', c.pidMode[s.dataset.pid] === b.dataset.mode)));
+    if (document.activeElement !== $('#rate-imu')) $('#rate-imu').value = c.rateImu;
+    if (document.activeElement !== $('#rate-obd')) $('#rate-obd').value = c.rateObd;
+    $('#a-chips').innerHTML = statusChips();
+    $('#a-sample').innerHTML = lastSampleHtml();
+    $('#a-counters').innerHTML = countersHtml();
+    $('#a-log').innerHTML = logHtml();
+    const t1 = Math.max(30, world.t), t0 = t1 - 30, xl = s => `${Math.round(s - t1)} s`;
+    const base = { t0, t1, xLabel: xl, xStep: 5 };
+    drawChart($('#c-speed'), { ...base, title: 'Velocidade (km/h)', minSpan: 10, include: [0], ...seriesFor('speed', 'obd') });
+    drawChart($('#c-rpm'), { ...base, title: 'Rotação (rpm)', minSpan: 500, include: [0], ...seriesFor('rpm', 'obd') });
+    drawChart($('#c-ax'), { ...base, title: 'ax, frente (m/s²)', minSpan: 2, ...seriesFor('ax', 'imu') });
+    drawChart($('#c-az'), { ...base, title: 'az, cima (m/s²)', minSpan: 2, ...seriesFor('az', 'imu') });
+    drawChart($('#c-gz'), { ...base, title: 'gz, giro (°/s)', minSpan: 10, ...seriesFor('gz', 'imu') });
+    drawStrips($('#c-strip'), t0, t1, xl, 5);
+  },
+};
+
+// ======================================================================================
+// Variante B · Roteiro primeiro
+// ======================================================================================
+const VariantB = {
+  name: 'Roteiro primeiro',
+  parsed: null,
+  mount(app) {
+    app.innerHTML = `
+    <div class="vb">
+      <div class="bar">
+        <select id="b-script">${Object.keys(SCRIPTS).map(n => `<option>${n}</option>`).join('')}</select>
+        <button class="btn primary" data-act="run">▶ Rodar</button>
+        <button class="btn" data-act="stop">■ Parar</button>
+        <span class="time" id="b-time"></span>
+        <span class="chips" id="b-chips"></span>
+      </div>
+      <div class="grid">
+        <aside>
+          <h3>Texto do roteiro (editável)</h3>
+          <textarea id="b-text" spellcheck="false"></textarea>
+          <div class="errors" id="b-errors"></div>
+          <details><summary>Comandos aceitos</summary><pre class="json">${Model.COMMANDS_HELP.join('\n')}</pre></details>
+        </aside>
+        <main>
+          <canvas id="b-timeline" class="timeline"></canvas>
+          <canvas id="b-speed"></canvas><canvas id="b-ax"></canvas><canvas id="b-az"></canvas>
+          <canvas id="b-strip" class="strip"></canvas>
+          <p class="hint">Eixo do tempo do roteiro inteiro, de 0 ao fim. Linha fina: o que o simulador mandou. Pontos: o que chegou à Pi.</p>
+        </main>
+      </div>
+      <div class="foot">
+        <div class="card"><h3>Intervir no meio do roteiro</h3>
+          <div class="btns">${Object.entries(Model.EVENTS).map(([k, v]) => `<button class="btn" data-ev="${k}">${v}</button>`).join('')}
+          <button class="btn" data-tgl="ignition">Ignição liga/desliga</button><button class="btn" data-tgl="piPing">PING liga/desliga</button>
+          <button class="btn" data-tgl="imuFail">Falha da IMU</button></div>
+          <p class="hint">Os controles finos (pedal, volante, PIDs, taxas) ficam só no texto do roteiro.</p>
+        </div>
+        <div class="card"><h3>Registro</h3><div class="log" id="b-log" style="max-height:160px"></div></div>
+      </div>
+    </div>`;
+    const load = () => { $('#b-text').value = SCRIPTS[$('#b-script').value]; this.reparse(); };
+    $('#b-script').addEventListener('change', load);
+    $('#b-text').addEventListener('input', () => this.reparse());
+    const running = world.script && !world.script.done ? world.script.name : null;
+    if (running && SCRIPTS[running]) $('#b-script').value = running;
+    load();
+    app.addEventListener('click', e => {
+      const b = e.target.closest('button'); if (!b) return;
+      if (b.dataset.ev) applyAct({ type: 'event', name: b.dataset.ev });
+      if (b.dataset.tgl) applyAct({ type: b.dataset.tgl, value: !world.controls[b.dataset.tgl] });
+      if (b.dataset.act === 'run') { this.reparse(); if (!this.parsed.errors.length) Model.startScript(world, this.parsed); }
+      if (b.dataset.act === 'stop') Model.stopScript(world);
+    });
+  },
+  reparse() {
+    this.parsed = Model.parseScript($('#b-script').value, $('#b-text').value);
+    $('#b-errors').innerHTML = this.parsed.errors.map(escapeHtml).join('<br>');
+  },
+  render() {
+    const s = world.script;
+    const shown = s || this.parsed;
+    const t0 = s ? s.t0 : world.t, dur = Math.max(10, shown.duration), el = s ? Math.min(world.t - s.t0, dur) : 0;
+    $('#b-time').textContent = `${Model.fmtClock(el)} / ${Model.fmtClock(dur)}` + (s ? (s.done ? '  (terminado)' : '') : '  (parado)');
+    $('#b-chips').innerHTML = statusChips();
+    $('#b-log').innerHTML = logHtml(40);
+    const xStep = dur > 90 ? 10 : 5, xl = v => Model.fmtClock(Math.max(0, v - t0));
+    const base = { t0, t1: t0 + dur, xLabel: xl, xStep };
+    this.drawTimeline($('#b-timeline'), shown, el);
+    drawChart($('#b-speed'), { ...base, title: 'Velocidade (km/h)', minSpan: 10, include: [0], ...seriesFor('speed', 'obd') });
+    drawChart($('#b-ax'), { ...base, title: 'ax, frente (m/s²)', minSpan: 2, ...seriesFor('ax', 'imu') });
+    drawChart($('#b-az'), { ...base, title: 'az, cima (m/s²)', minSpan: 2, ...seriesFor('az', 'imu') });
+    drawStrips($('#b-strip'), t0, t0 + dur, xl, xStep);
+  },
+  drawTimeline(cv, sc, el) {
+    const { g, W, H } = setupCanvas(cv);
+    const L = 46, R = 10, pw = W - L - R, dur = Math.max(10, sc.duration);
+    const X = t => L + t / dur * pw;
+    const fam = getComputedStyle(document.body).fontFamily;
+    g.fillStyle = C.ink; g.font = '600 11px ' + fam; g.textAlign = 'left'; g.fillText('Roteiro: ' + sc.name, L, 14);
+    g.fillStyle = C.soft; g.fillRect(L, 22, pw, H - 30);
+    g.fillStyle = C.accent; g.globalAlpha = 0.15; g.fillRect(L, 22, X(el) - L, H - 30); g.globalAlpha = 1;
+    const lanes = [0, 0, 0, 0, 0];
+    g.font = '10.5px ' + fam;
+    for (const a of sc.actions) {
+      const x = X(a.at), wtxt = g.measureText(a.text).width + 8;
+      let lane = lanes.findIndex(end => end <= x); if (lane < 0) lane = lanes.indexOf(Math.min(...lanes));
+      lanes[lane] = x + wtxt;
+      const y = 34 + lane * 15;
+      const past = a.at <= el && world.script;
+      g.strokeStyle = past ? C.accent : C.muted; g.beginPath(); g.moveTo(x + 0.5, 22); g.lineTo(x + 0.5, y - 3); g.stroke();
+      g.fillStyle = past ? C.accent : C.ink; g.fillText(a.text, Math.min(x + 3, W - R - wtxt + 8), y + 4);
+    }
+    g.strokeStyle = C.bad; g.lineWidth = 2; g.beginPath(); g.moveTo(X(el), 18); g.lineTo(X(el), H - 8); g.stroke(); g.lineWidth = 1;
+  },
+};
+
+// ======================================================================================
+// Variante C · Terminal (como ficaria um programa em curses)
+// ======================================================================================
+const VariantC = {
+  name: 'Terminal',
+  scriptIdx: 0,
+  mount(app) {
+    app.innerHTML = `<div class="vc"><pre id="c-screen" tabindex="0"></pre>
+      <p class="hint">Clique na tela preta e use o teclado. É como ficaria um programa de terminal (curses), sem mouse.</p></div>`;
+    $('#c-screen').focus();
+    this.onKey = e => this.key(e);
+    document.addEventListener('keydown', this.onKey);
+  },
+  unmount() { document.removeEventListener('keydown', this.onKey); },
+  key(e) {
+    if (e.target.matches('input, textarea, select')) return;
+    const c = world.controls, k = e.key.toLowerCase();
+    const P = Model.PIDS, modes = ['ok', 'absent', 'mute'];
+    const map = {
+      w: () => applyAct({ type: 'pedal', value: c.pedal + 0.1 }, true),
+      s: () => applyAct({ type: 'pedal', value: c.pedal - 0.1 }, true),
+      x: () => applyAct({ type: 'brake', value: c.brake + 0.2 }, true),
+      z: () => applyAct({ type: 'brake', value: 0 }, true),
+      a: () => applyAct({ type: 'steer', value: c.steer + 0.1 }, true),
+      d: () => applyAct({ type: 'steer', value: c.steer - 0.1 }, true),
+      ' ': () => applyAct({ type: 'release' }),
+      b: () => applyAct({ type: 'event', name: 'buraco' }),
+      l: () => applyAct({ type: 'event', name: 'lombada' }),
+      f: () => applyAct({ type: 'event', name: 'frenagem' }),
+      c: () => applyAct({ type: 'event', name: 'curva_esq' }),
+      v: () => applyAct({ type: 'event', name: 'curva_dir' }),
+      t: () => applyAct({ type: 'event', name: 'faixa' }),
+      i: () => applyAct({ type: 'ignition', value: !c.ignition }),
+      p: () => applyAct({ type: 'crank' }),
+      m: () => applyAct({ type: 'imuFail', value: !c.imuFail }),
+      n: () => applyAct({ type: 'imuStop', value: !c.imuStop }),
+      g: () => applyAct({ type: 'piPing', value: !c.piPing }),
+      j: () => applyAct({ type: 'piStalled', value: !c.piStalled }),
+      '+': () => { const r = Model.IMU_RATES, i = r.indexOf(c.rateImu); applyAct({ type: 'rates', imu: r[Math.max(0, i - 1)] }); },
+      '-': () => { const r = Model.IMU_RATES, i = r.indexOf(c.rateImu); applyAct({ type: 'rates', imu: r[Math.min(r.length - 1, i + 1)] }); },
+      r: () => {
+        if (world.script && !world.script.done) { Model.stopScript(world); return; }
+        const names = Object.keys(SCRIPTS), n = names[this.scriptIdx++ % names.length];
+        Model.startScript(world, Model.parseScript(n, SCRIPTS[n]));
+      },
+    };
+    if (/^[1-8]$/.test(k)) {
+      const p = P[+k - 1], next = modes[(modes.indexOf(c.pidMode[p.key]) + 1) % 3];
+      applyAct({ type: 'pidMode', key: p.key, mode: next }); e.preventDefault(); return;
+    }
+    if (map[k]) { map[k](); e.preventDefault(); }
+  },
+  spark(arr, n = 24) {
+    const bars = '▁▂▃▄▅▆▇█', v = arr.filter(x => !Number.isNaN(x));
+    if (!v.length) return ' '.repeat(n);
+    const step = Math.max(1, Math.floor(v.length / n)), pts = [];
+    for (let i = Math.max(0, v.length - step * n); i < v.length; i += step) pts.push(v[i]);
+    const lo = Math.min(...pts), hi = Math.max(...pts), r = hi - lo || 1;
+    return pts.map(x => bars[Math.min(7, Math.floor((x - lo) / r * 8))]).join('').padEnd(n);
+  },
+  render() {
+    const w = world, h = w.hist, d = w.dec, st = d.lastStatus, c = w.controls, car = w.car;
+    const last10 = k => h[k].slice(-1000);
+    const rxImu = h.rxImu.filter(e => !e.empty).slice(-250), rxObd = h.rxObd.filter(e => !e.empty);
+    const lo = rxObd[rxObd.length - 1], li = rxImu[rxImu.length - 1];
+    const col = (s, cls) => `<span class="${cls}">${s}</span>`;
+    const pad = (s, n) => String(s).padEnd(n), lpad = (s, n) => String(s).padStart(n);
+    const obdState = st ? Model.OBD_STATES[st.obd] : '—';
+    const obdCls = !st ? 'd' : st.obd === 3 ? 'g' : st.obd <= 2 ? 'b' : 'r';
+    const sc = w.script && !w.script.done ? `${w.script.name} ${Model.fmtClock(w.t - w.script.t0)}/${Model.fmtClock(w.script.duration)}` : 'nenhum';
+    const row = (name, sent, rx, sp) => ` ${pad(name, 11)}${pad(sent, 15)}${col(pad(rx, 34), rx.startsWith('sem') || rx.startsWith('ausente') ? 'd' : '')}${col(sp, 'b')}`;
+    const rxObdVal = (key, unit, dd) => lo && key in lo.v ? `${lpad(fmt(lo.v[key], dd), 6)} ${pad(unit, 5)} idade ${lo.age[key]} ms` : 'ausente da amostra';
+    const rxImuVal = k => li ? `média ${lpad(fmt(li.m[k], 2), 6)}  pico ${lpad(fmt(li.p[k], 2), 6)}` : 'sem amostras';
+    const pidLine = Model.PIDS.map((p, i) => `${col(i + 1, 'k')} ${p.key} ${c.pidMode[p.key] === 'ok' ? col('ok', 'g') : col(Model.PID_MODE_NAMES[c.pidMode[p.key]], 'r')}`).join('  ');
+    const e = st ? st.counters : w.fw.counters, dc = d.counters;
+    const lines = [
+      `${col(' V-GUARD · simulador do PC', 'k')}            t = ${fmt(w.t, 1).padStart(7)} s      roteiro: ${sc}`,
+      col('─'.repeat(104), 'd'),
+      ` ${pad('', 11)}${col(pad('ENVIADO', 15), 'k')}${col(pad('RECEBIDO PELA PI', 34), 'k')}${col('ENVIADO, ÚLTIMOS 10 s', 'k')}`,
+      row('velocidade', `${lpad(fmt(car.v * 3.6, 0), 6)} km/h`, rxObdVal('speed', 'km/h', 0), this.spark(last10('kmh'))),
+      row('rotação', `${lpad(fmt(car.rpm, 0), 6)} rpm`, rxObdVal('rpm', 'rpm', 0), this.spark(last10('rpm'))),
+      row('ax', `${lpad(fmt(w.reading.ax, 2), 6)} m/s²`, rxImuVal('ax'), this.spark(last10('ax'))),
+      row('ay', `${lpad(fmt(w.reading.ay, 2), 6)} m/s²`, rxImuVal('ay'), this.spark(last10('ay'))),
+      row('az', `${lpad(fmt(w.reading.az, 2), 6)} m/s²`, rxImuVal('az'), this.spark(last10('az'))),
+      row('gz', `${lpad(fmt(w.reading.gz, 1), 6)} °/s`, rxImuVal('gz'), this.spark(last10('gz'))),
+      '',
+      ` ${col('MOTORISTA', 'k')}  acelerador ${lpad(Math.round(car.inputs.pedal * 100), 3)}%   freio ${lpad(Math.round(car.inputs.brake * 100), 3)}%   volante ${lpad(Math.round(car.inputs.steer * 100), 4)}%   ${c.ignition ? (car.engine ? col('motor ligado', 'g') : col('motor parado', 'y')) : col('ignição desligada', 'd')}`,
+      ` ${col('ESTADOS', 'k')}    Pi: ${c.piStalled ? col('travada', 'r') : c.piPing ? col('manda PING', 'g') : col('sem PING', 'y')}   OBD: ${col(obdState, obdCls)}   IMU: ${st && st.imu ? col('FALHA', 'r') : col('ok', 'g')}   taxas em uso: IMU ${st ? st.rateImu : '—'}/s · OBD ${st ? st.rateObd : '—'}/s (pedido ${c.rateImu}/${c.rateObd})`,
+      ` ${col('0x83', 'k')}       ${c.imuStop ? col('parada', 'r') : col('100/s', 'g')}   marca de falha ${c.imuFail ? col('ligada', 'r') : 'desligada'}   ruído ${c.noise ? 'ligado' : 'desligado'}   atraso da ECU ${c.ecuDelayMs} ms   perda ${c.ecuLossPct}%`,
+      ` ${col('PIDs', 'k')}       ${pidLine}`,
+      ` ${col('ESP32', 'k')}      descartadas ${e.dropped}  rejeitadas ${e.rejected}  falhas_imu ${e.imu_failures}  obd enviadas/respondidas/sem resposta ${e.obd_sent}/${e.obd_answered}/${e.obd_timeouts}`,
+      ` ${col('DECODIF.', 'k')}   imu ${dc.imu}  obd ${dc.obd}  vazias ${dc.empty}  perdidas ${dc.lost}  sem sincronização ${dc.unsynced}`,
+      '',
+      ` ${col('REGISTRO', 'k')}`,
+      ...w.log.slice(-9).reverse().map(x => ` ${col(fmt(x.t, 2).padStart(8), 'd')} ${col(pad(x.who, 13), 'd')} ${escapeHtml(x.text)}`),
+      col('─'.repeat(104), 'd'),
+      ` ${col('W/S', 'k')} acelerador ±10%  ${col('X/Z', 'k')} freio +20%/solta  ${col('A/D', 'k')} volante  ${col('espaço', 'k')} solta tudo   ${col('B', 'k')} buraco  ${col('L', 'k')} lombada  ${col('F', 'k')} frenagem`,
+      ` ${col('C/V', 'k')} curva esq/dir  ${col('T', 'k')} troca de faixa  ${col('I', 'k')} ignição  ${col('P', 'k')} partida  ${col('1-8', 'k')} PID normal→ausente→mudo`,
+      ` ${col('M', 'k')} falha da IMU  ${col('N', 'k')} para a 0x83  ${col('G', 'k')} PING  ${col('J', 'k')} Pi travada  ${col('+/-', 'k')} taxa da IMU  ${col('R', 'k')} roda o próximo roteiro / para`,
+    ];
+    $('#c-screen').innerHTML = lines.join('\n');
+  },
+};
+
+// ======================================================================================
+// Troca de variante e laço principal
+// ======================================================================================
+const VARIANTS = { A: VariantA, B: VariantB, C: VariantC };
+const KEYS = Object.keys(VARIANTS);
+let current = null;
+function show(key) {
+  if (!VARIANTS[key]) key = 'A';
+  if (current && current.unmount) current.unmount();
+  const app = $('#app');
+  const fresh = app.cloneNode(false); app.replaceWith(fresh);   // larga os ouvintes da variante anterior
+  current = VARIANTS[key];
+  current.mount(fresh);
+  $('#sw-label').textContent = `${key} · ${current.name}`;
+  const u = new URL(location.href); u.searchParams.set('variant', key); history.replaceState(null, '', u);
+  current.key_ = key;
+}
+const cycle = dir => show(KEYS[(KEYS.indexOf(current.key_) + dir + KEYS.length) % KEYS.length]);
+$('#sw-prev').onclick = () => cycle(-1);
+$('#sw-next').onclick = () => cycle(1);
+document.addEventListener('keydown', e => {
+  if (e.target.matches('input, textarea, select, [contenteditable]')) return;
+  if (e.key === 'ArrowLeft') cycle(-1);
+  if (e.key === 'ArrowRight') cycle(1);
+});
+document.querySelector('.banner [data-act="reset"]').onclick = () => { world = Model.create(); show(current.key_); };
+
+// Atalho para testes: ?roteiro=Falhas&avancar=40 começa o roteiro e adianta 40 s de simulação.
+const qp = new URLSearchParams(location.search);
+if (SCRIPTS[qp.get('roteiro')]) Model.startScript(world, Model.parseScript(qp.get('roteiro'), SCRIPTS[qp.get('roteiro')]));
+for (let i = 0; i < (+qp.get('avancar') || 0) / Model.DT; i++) Model.step(world);
+
+show(qp.get('variant') || 'A');
+
+let last = performance.now(), acc = 0, lastRender = 0;
+function frame(now) {
+  acc += Math.min(0.25, (now - last) / 1000); last = now;
+  while (acc >= Model.DT) { Model.step(world); acc -= Model.DT; }
+  if (now - lastRender > 70) { lastRender = now; current.render(); }
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

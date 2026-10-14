@@ -12,3 +12,6 @@ Cronograma_VGUARD - Cronograma.csv
 __pycache__/
 *.pyc
 .venv/
+
+# Worktrees dos agentes do Claude Code
+.claude/worktrees/

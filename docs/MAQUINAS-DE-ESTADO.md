@@ -222,5 +222,5 @@ Estes cenários são a base dos testes do #13.
   - ler o pino RX;
   - os motivos de falha;
   - o relógio.
-- **Ticket #14:** o driver TWAI novo tem tudo o que este documento usa: `fail_retry_cnt`, `ack_err`, `arb_lost`, `on_state_change` e `twai_node_recover()`.
+- **Driver CAN (ticket #14):** o firmware usa o driver TWAI novo do ESP-IDF 6.1, que tem tudo o que este documento usa: `fail_retry_cnt`, `ack_err`, `arb_lost`, `on_state_change` e `twai_node_recover()`.
 - **Ticket #13:** como provar cada cenário, no notebook e na bancada.

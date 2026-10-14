@@ -1,0 +1,14 @@
+# Material de referência local (fica fora do repo)
+v_guard.pdf
+Requisitos_V-Guard_Veicular.pdf
+Cronograma_VGUARD - Cronograma.csv
+1plan.pdf
+
+# PlatformIO / build
+.pio/
+.vscode/
+
+# Python
+__pycache__/
+*.pyc
+.venv/

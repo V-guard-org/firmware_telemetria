@@ -13,6 +13,7 @@ O planejamento foi concluído em 13/10/2026. O desenvolvimento começa pela fase
 | Protocolo ESP32 ↔ Pi (mensagens, bytes e comportamento) | [`docs/PROTOCOLO.md`](docs/PROTOCOLO.md) |
 | Máquinas de estado (boot, OBD no CAN e IMU) | [`docs/MAQUINAS-DE-ESTADO.md`](docs/MAQUINAS-DE-ESTADO.md) |
 | Núcleo portátil e camada de plataforma (portas, eventos, IMU simulada, estrutura do código) | [`docs/PLATAFORMA.md`](docs/PLATAFORMA.md) |
+| Decodificador Python, guia do leitor da Pi e ESP32 falso | [`docs/DECODIFICADOR.md`](docs/DECODIFICADOR.md) |
 | Mapa de decisões em aberto | [issue #1](https://github.com/V-guard-org/firmware_telemetria/issues/1) (etiqueta `wayfinder:map`) |
 | Resultados de pesquisas | ramos `research/*` |
 | Histórico do planejamento (superado) | `docs/PLANO.md`, `docs/notas-equipe.md` |

@@ -27,3 +27,5 @@ O decodificador não abre a porta serial: quem abre é o leitor da Pi.
 - Ele também devolve os bytes que o leitor deve escrever na porta: comandos de taxa (RF29) e as perguntas de horário (ADR-0004).
 - Na amostra OBD, um PID que o carro não suporta fica ausente, nunca `null`.
 - Descartar valores velhos pelo `age_ms` é responsabilidade do leitor.
+
+A API completa e o guia do leitor estão em [`docs/DECODIFICADOR.md`](../DECODIFICADOR.md) (ticket #12).

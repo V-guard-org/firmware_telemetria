@@ -54,6 +54,10 @@ _Avoid_: sessão, execução
 A mensagem que o ESP32 envia no boot e depois 1 vez por segundo, com sua identificação, a configuração em uso e os contadores. Também serve de confirmação dos comandos da Pi.
 _Avoid_: HELLO, heartbeat, ACK
 
+**Par de horários**:
+O instante da Pi no meio de um PING e do seu PONG, junto com o `t_us` que o ESP32 pôs no PONG. O decodificador ajusta a conversão de horário por esses pares.
+_Avoid_: amostra de tempo, medição de relógio
+
 **Taxa de envio**:
 Quantas amostras de uma fonte o ESP32 entrega à Pi por segundo. Quem escolhe é a Pi.
 _Avoid_: frequência de amostragem (que é a das leituras da IMU)
@@ -98,6 +102,10 @@ _Avoid_: leitura de PID
 **Idade**:
 Há quanto tempo o carro respondeu um valor da amostra OBD, contado até o instante da amostra.
 _Avoid_: atraso, latência
+
+**Amostra vazia**:
+Uma amostra sem nenhum valor, que o decodificador entrega uma vez quando uma fonte para, para que a Pi não trate a última amostra como atual.
+_Avoid_: amostra nula, amostra zerada
 
 **Telemetria consolidada**:
 A linha por segundo que a Pi grava a partir das amostras. Não é produzida pelo firmware.
@@ -153,6 +161,10 @@ _Avoid_: simulação (para o programa do PC)
 **ECU simulada**:
 O programa no notebook que responde às requisições OBD como se fosse o carro, no CAN virtual ou no barramento real. Permanece no projeto.
 _Avoid_: simulador OBD, ECU falsa
+
+**ESP32 falso**:
+O programa Python que imita o ESP32 no cabo, com amostras inventadas, para testar o leitor da UART e o decodificador sem placa e sem firmware. Permanece no projeto.
+_Avoid_: ESP32 simulado, simulador (para ele)
 
 **Adaptador USB-CAN**:
 O segundo ESP32, que liga o notebook ao barramento CAN real na bancada.

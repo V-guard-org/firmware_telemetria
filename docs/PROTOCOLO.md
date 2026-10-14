@@ -171,7 +171,7 @@ O que cada amostra significa:
 - **Bytes crus.** O ESP32 não aplica fórmulas; o decodificador aplica, com a tabela abaixo (ADR-0006). O `tam` permite ao decodificador pular um PID que ele não conhece.
 - **Carro sem resposta** (ignição desligada; estado SEM_RESPOSTA, depois de 2 s sem nenhuma resposta): o ESP32 não envia amostras OBD, e os valores guardados são esquecidos. As amostras voltam sozinhas quando o carro responder de novo, já sem os valores antigos. O STATUS mostra o estado.
 
-**Fórmulas aplicadas pelo decodificador.** Os nomes no dicionário entregue à Pi são definidos no ticket #12.
+**Fórmulas aplicadas pelo decodificador.** Os nomes no dicionário entregue à Pi estão no [`DECODIFICADOR.md` §3.3](DECODIFICADOR.md).
 
 | PID | Valor | Fórmula | Unidade |
 |---|---|---|---|
@@ -310,10 +310,10 @@ Se a versão do STATUS for desconhecida, o decodificador avisa "versão incompat
 1. O decodificador envia um PING por segundo e anota o relógio monotônico da Pi no envio (`t1`) e na chegada do PONG (`t2`).
 2. Cada PONG dá um par de horários: o meio da ida e volta, `(t1 + t2)/2`, corresponde ao `t_us` do ESP32. O erro desse par é no máximo metade do tempo de ida e volta.
 3. Só valem pares com ida e volta de até 20 ms, ou seja, erro de até 10 ms (D12).
-4. Com os pares mais rápidos dos últimos minutos, o decodificador ajusta uma reta, `monotônico = a + b·t_us`. A reta corrige o deslocamento e também a deriva do cristal do ESP32. Com um único par, só o deslocamento é usado.
+4. Com os pares mais rápidos dos últimos minutos, o decodificador ajusta uma reta, `monotônico = a + b·t_us`. A reta corrige o deslocamento e também a deriva do cristal do ESP32. Enquanto os pares cobrirem pouco tempo, só o deslocamento é usado.
 5. Na entrega, o horário monotônico vira hora real com `time.time() − time.monotonic()`, calculado naquele momento. Se o chrony corrigir a hora da Pi aos saltos quando o GPS pegar sinal, as amostras seguintes já saem certas.
 
-O número de pares e o tamanho da janela são valores iniciais a calibrar na bancada (#12 e #13).
+O número de pares e o tamanho da janela estão no [`DECODIFICADOR.md` §3.8](DECODIFICADOR.md). São valores iniciais, calibrados na bancada no #13.
 
 ### 6.4 Taxas de envio (RF29)
 
@@ -385,7 +385,7 @@ no cabo (9):        02 81 01 02 07 02 1A 01 00
 
 ## 9. Fora deste documento
 
-- **Ticket #12:** os dicionários entregues ao leitor da Isabela, os nomes dos campos e as funções do decodificador.
+- **[`DECODIFICADOR.md`](DECODIFICADOR.md)** (ticket #12): os dicionários entregues ao leitor da Isabela, os nomes dos campos e as funções do decodificador.
 - **[`MAQUINAS-DE-ESTADO.md`](MAQUINAS-DE-ESTADO.md)** (ticket #8): quando o ESP32 pergunta ao carro, quando o carro conta como "sem resposta", e qual central responde a cada PID.
 - **[`PLATAFORMA.md`](PLATAFORMA.md)** (ticket #10): onde o núcleo portátil monta, envia e recebe estas mensagens, e o que fica na camada de plataforma.
 - **Ticket #13:** como provar tudo isto (testes, ensaio de 2 h).

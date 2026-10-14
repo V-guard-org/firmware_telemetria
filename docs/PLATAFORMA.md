@@ -287,7 +287,7 @@ src/
   vguard/            plataforma do ESP32 e app_main: TWAI, GPIO27 e boot, UART, watchdog
   native/            plataforma do notebook e main: SocketCAN, pty, poll()
 test/                Unity: um teste por módulo, mais os cenários com portas falsas
-host/                Python: decodificador (#12), ECU simulada, simulador (#9)
+host/                Python: decodificador e ESP32 falso (#12), ECU simulada, simulador (#9)
 ```
 
 - Os ambientes do ESP32 escolhem a pasta do app com `board_build.cmake_extra_args`, e o `native` com `build_src_filter`, como no #6.
@@ -297,7 +297,7 @@ host/                Python: decodificador (#12), ECU simulada, simulador (#9)
 ## 8. Fora deste documento
 
 - **Ticket #9:** o que o simulador põe na IMU_SIM e como ele é controlado.
-- **Ticket #12:** a API do decodificador para o leitor da Isabela. A IMU_SIM não faz parte dela.
+- **[`DECODIFICADOR.md`](DECODIFICADOR.md)** (ticket #12): a API do decodificador para o leitor da Isabela. A IMU_SIM não faz parte dela.
 - **Ticket #13:** os testes de cada cenário e o roteiro da bancada.
 - **Bancada (fase 2):** confirmar o PCNT junto com o TWAI no GPIO26 e medir a sequência do GPIO27.
 - **Driver da IMU real:** depende do modelo a ser comprado (T14.1).

@@ -18,6 +18,30 @@ _Avoid_: comando, mensagem CAN
 O identificador de um parâmetro do carro no OBD-II, como RPM ou velocidade.
 _Avoid_: parâmetro OBD, sensor do carro
 
+**Central**:
+Um módulo eletrônico do carro que responde às requisições OBD, como a central do motor.
+_Avoid_: ECU (reservado para a ECU simulada), módulo
+
+**Descoberta**:
+A etapa em que o ESP32 pergunta às centrais quais PIDs elas suportam e escolhe a central que vai responder a cada PID.
+_Avoid_: varredura, scan
+
+**Lista fechada**:
+O conjunto fixo, no código, dos únicos quadros CAN que o firmware pode transmitir: requisições OBD do modo 01 para os endereços padronizados.
+_Avoid_: whitelist, filtro
+
+**Modo silencioso**:
+O estado do transceptor CAN em que ele escuta, mas não consegue transmitir. É o estado padrão, garantido por um resistor, e o firmware só o libera durante a descoberta e a leitura.
+_Avoid_: standby, listen-only (que é o modo do controlador)
+
+**Bloqueio**:
+O estado em que o firmware deixa de transmitir no CAN até reiniciar, depois de falhas repetidas ou de uma violação da lista fechada.
+_Avoid_: travamento, desligamento
+
+**Presença da Pi**:
+A Pi está presente se mandou um PING nos últimos 3 s. Sem ela, o firmware não pergunta nada ao carro.
+_Avoid_: conexão, sessão
+
 **Mensagem**:
 A unidade de comunicação entre o ESP32 e a Pi pelo cabo.
 _Avoid_: quadro, pacote, frame

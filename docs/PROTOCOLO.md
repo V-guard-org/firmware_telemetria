@@ -90,8 +90,8 @@ Sai logo no boot, antes de qualquer amostra, e depois a cada 1 s.
 | 12 | `taxa_imu` | u8 | Taxa de envio da IMU em uso, em amostras/s |
 | 13 | `taxa_obd` | u8 | Taxa de envio do OBD em uso, em amostras/s |
 | 14 | `estado_imu` | u8 | 0 ok · 1 falha |
-| 15 | `estado_obd` | u8 | Valores definidos no ticket #8 (máquinas de estado) |
-| 16 | `pids` | 12 bytes | Respostas do carro aos PIDs `0x00`, `0x20` e `0x40` (4 bytes cada, na ordem em que o carro os envia). Ficam zeradas até a descoberta. No 1º byte, o bit 7 é o PID `0x01`. |
+| 15 | `estado_obd` | u8 | 0 ESPERANDO_PI · 1 ESCUTANDO · 2 DESCOBRINDO · 3 LENDO · 4 SEM_RESPOSTA · 5 VELOCIDADE_ERRADA · 6 LINHA_PRESA · 7 FALHA_CAN · 8 BLOQUEADO ([`MAQUINAS-DE-ESTADO.md`](MAQUINAS-DE-ESTADO.md) §2) |
+| 16 | `pids` | 12 bytes | Respostas do carro aos PIDs `0x00`, `0x20` e `0x40` (4 bytes cada, na ordem em que o carro os envia), unidas (OU) entre todas as centrais que responderam. Ficam zeradas até a descoberta. No 1º byte, o bit 7 é o PID `0x01`. |
 | 28 | `contadores` | 9 × u32 | Somas desde o boot (tabela abaixo) |
 | 64 | `heap_min` | u32 | Menor memória livre já registrada, em bytes |
 | 68 | `firmware` | texto ASCII | Versão do firmware, por exemplo `0.4.0-a58af37`, com até 32 bytes. Ocupa o restante da mensagem. |
@@ -168,7 +168,7 @@ O que cada amostra significa:
 - **PID não suportado** fica ausente, nunca nulo.
 - **PID que parou de responder** continua na amostra, com a idade crescendo. A Pi descarta pela idade.
 - **Bytes crus.** O ESP32 não aplica fórmulas; o decodificador aplica, com a tabela abaixo (ADR-0006). O `tam` permite ao decodificador pular um PID que ele não conhece.
-- **Carro sem resposta** (ignição desligada, estado definido no #8): o ESP32 não envia amostras OBD, e os valores guardados são esquecidos. As amostras voltam sozinhas quando o carro responder de novo, já sem os valores antigos. O STATUS mostra o estado.
+- **Carro sem resposta** (ignição desligada; estado SEM_RESPOSTA, depois de 2 s sem nenhuma resposta): o ESP32 não envia amostras OBD, e os valores guardados são esquecidos. As amostras voltam sozinhas quando o carro responder de novo, já sem os valores antigos. O STATUS mostra o estado.
 
 **Fórmulas aplicadas pelo decodificador.** Os nomes no dicionário entregue à Pi são definidos no ticket #12.
 
@@ -364,9 +364,6 @@ no cabo (9):        02 81 01 02 07 02 1A 01 00
 ## 9. Fora deste documento
 
 - **Ticket #12:** os dicionários entregues ao leitor da Isabela, os nomes dos campos e as funções do decodificador.
-- **Ticket #8:**
-  - os valores de `estado_obd`;
-  - quanto tempo sem resposta conta como "carro sem resposta";
-  - qual valor vale quando duas centrais do carro respondem ao mesmo PID.
+- **[`MAQUINAS-DE-ESTADO.md`](MAQUINAS-DE-ESTADO.md)** (ticket #8): quando o ESP32 pergunta ao carro, quando o carro conta como "sem resposta", e qual central responde a cada PID.
 - **Ticket #13:** como provar tudo isto (testes, ensaio de 2 h).
 - **Ticket da fiação:** qual UART do ESP32 vai para os fios na fase 4.

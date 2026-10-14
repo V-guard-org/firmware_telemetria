@@ -1,0 +1,6 @@
+# O DevKit esp32dev tem 4 MB de flash; o padrão do ESP-IDF é 2 MB.
+CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
+
+# O ESP-IDF 6.x marca driver/twai.h (driver antigo) como obsoleto com um #warning,
+# e o build trata avisos como erro. Esta opção cala o aviso para o app vguard.
+CONFIG_TWAI_SUPPRESS_DEPRECATE_WARN=y

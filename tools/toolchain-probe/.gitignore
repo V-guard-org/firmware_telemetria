@@ -1,0 +1,6 @@
+# Saída de build do PlatformIO
+.pio/
+
+# sdkconfig.<env> é gerado a cada build a partir de sdkconfig.defaults (artefato, não fonte)
+sdkconfig.*
+!sdkconfig.defaults

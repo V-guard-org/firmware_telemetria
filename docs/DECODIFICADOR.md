@@ -127,8 +127,8 @@ O `feed()` devolve uma lista, muitas vezes vazia, de trios `(source, ts, sample)
 
 | Situação | O que acontece | Quanto tempo |
 |---|---|---|
-| O leitor acabou de abrir a porta | Nenhuma amostra, até chegar um STATUS e o 1º PONG válido | Cerca de 1 a 2 s |
-| O ESP32 reiniciou | A mesma espera, com o boot novo | Cerca de 1 a 2 s |
+| O leitor acabou de abrir a porta | Nenhuma amostra, até chegar um STATUS e o 1º PONG válido. O 1º PING sai na criação do `Decoder`. | Até cerca de 1 s, o intervalo do STATUS |
+| O ESP32 reiniciou | Nenhuma amostra até o PONG do boot novo. O STATUS sai logo no boot, e o decodificador responde com um PING na hora. | Poucos milissegundos depois do 1º STATUS do boot novo |
 | A Pi acabou de aparecer para o ESP32 | IMU logo; OBD só depois que o ESP32 escuta e descobre os PIDs ([`MAQUINAS-DE-ESTADO.md`](MAQUINAS-DE-ESTADO.md) §4) | OBD em cerca de 1,2 s |
 | Carro desligado ou sem resposta | Um `{}` do OBD, e depois nada até o carro responder | Enquanto durar |
 | Cabo solto ou ESP32 travado | Um `{}` de cada fonte depois de 3 s sem nenhuma mensagem válida | Enquanto durar |
@@ -301,7 +301,7 @@ Um código fora das tabelas vira `"unknown"`.
 ### 3.7 O que o decodificador envia
 
 O `data_to_send()` devolve, num único `bytes`, tudo o que está pendente:
-- **PING:** 1 por segundo desde a criação do `Decoder`, mesmo sem ESP32 na linha, e mais um logo depois de perceber um boot novo. O instante `t1` do par é anotado na chamada que devolve o PING.
+- **PING:** o 1º na primeira chamada depois da criação do `Decoder`, e depois 1 por segundo, mesmo sem ESP32 na linha. Sai mais um logo depois de perceber um boot novo. O instante `t1` do par é anotado na chamada que devolve o PING.
 - **TAXAS:** no máximo uma por STATUS cujas taxas em uso diferem das pedidas, sempre com os dois valores pedidos ([`PROTOCOLO.md` §6.4](PROTOCOLO.md)).
 
 No cabeçalho, `boot` vale 0, e `seq` começa em 0 na criação do `Decoder` e soma 1 a cada mensagem. O PING do [`PROTOCOLO.md` §8](PROTOCOLO.md) é um vetor de teste.

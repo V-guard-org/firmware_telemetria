@@ -6,6 +6,7 @@ As decisões por trás deste documento estão nas ADRs:
 - [ADR-0002](adr/0002-mensagens-binarias-com-crc-sem-confirmacao.md): mensagens binárias com CRC, sem reenvio das amostras.
 - [ADR-0004](adr/0004-horario-pelo-relogio-do-esp32-convertido-na-pi.md): horário pelo relógio do ESP32, convertido na Pi.
 - [ADR-0006](adr/0006-formulas-obd-no-decodificador.md): as fórmulas do OBD ficam no decodificador.
+- [ADR-0009](adr/0009-imu-sim-pelo-usb-na-fase-4.md): na fase 4, a IMU_SIM chega pelo USB, separada dos fios da Pi.
 
 Os termos seguem o [`CONTEXT.md`](../CONTEXT.md).
 
@@ -42,7 +43,7 @@ Os termos seguem o [`CONTEXT.md`](../CONTEXT.md).
 
 - Formato 8N1, sem controle de fluxo.
 - No boot, a ROM do ESP32 imprime texto a 115200 baud na UART0. Na velocidade do protocolo, isso chega como lixo, e o CRC descarta.
-- Qual UART do ESP32 vai para os fios na fase 4 fica para o ticket da fiação; para o protocolo, é só uma constante.
+- Qual UART do ESP32 vai para os fios na fase 4 fica para o [#11](https://github.com/V-guard-org/firmware_telemetria/issues/11). Não pode ser a UART0, que fica com o USB para a IMU_SIM (ADR-0009). Para o protocolo, é só uma constante.
 
 ## 2. Moldura
 
@@ -237,10 +238,11 @@ O corpo tem 13 bytes, a mensagem inteira 20, e no cabo são 22.
 
 - **Valores.** São uma leitura no referencial do sensor. O ESP32 gira para o referencial do carro, como faz com a IMU real; até o T11, essa rotação é a identidade.
 - **Ritmo.** O simulador envia 100 por segundo, uma por leitura. A IMU simulada devolve o último valor recebido a cada leitura.
+- **Caminho.** Nas fases 1 e 2, pelo mesmo cabo do protocolo. Na fase 4, pelo USB (UART0), separada dos fios da Pi (ADR-0009).
 - **Falhas.** Com `falha` = 1, ou sem nenhuma IMU_SIM há mais de 1 s, a leitura falha. Depois de 10 falhas seguidas, a IMU entra em FALHA ([`MAQUINAS-DE-ESTADO.md` §3](MAQUINAS-DE-ESTADO.md)).
 - **Firmware sem IMU simulada.** A mensagem soma 1 em `rejeitadas`.
 - **Quando a simulação for apagada** (ADR-0003), esta mensagem sai do protocolo junto com ela.
-- **Conteúdo.** O que o simulador põe nela é decidido no ticket #9.
+- **Conteúdo.** A leitura do modelo do carro do simulador, com a gravidade e o ruído ([`SIMULADOR.md` §3.3](SIMULADOR.md)).
 
 ## 5. O decodificador, mensagem a mensagem
 
@@ -389,4 +391,5 @@ no cabo (9):        02 81 01 02 07 02 1A 01 00
 - **[`MAQUINAS-DE-ESTADO.md`](MAQUINAS-DE-ESTADO.md)** (ticket #8): quando o ESP32 pergunta ao carro, quando o carro conta como "sem resposta", e qual central responde a cada PID.
 - **[`PLATAFORMA.md`](PLATAFORMA.md)** (ticket #10): onde o núcleo portátil monta, envia e recebe estas mensagens, e o que fica na camada de plataforma.
 - **Ticket #13:** como provar tudo isto (testes, ensaio de 2 h).
-- **Ticket da fiação:** qual UART do ESP32 vai para os fios na fase 4.
+- **[`SIMULADOR.md`](SIMULADOR.md)** (ticket #9): o que o simulador põe na IMU_SIM e como faz o papel da Pi no desenvolvimento.
+- **[#11](https://github.com/V-guard-org/firmware_telemetria/issues/11):** qual UART do ESP32 vai para os fios na fase 4, que não pode ser a UART0.

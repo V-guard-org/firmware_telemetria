@@ -135,8 +135,10 @@ O driver informa por que um quadro falhou:
 - **Agenda.** RPM (`0x0C`) e velocidade (`0x0D`) a cada 200 ms; os outros PIDs a cada 1 s. A cada horário de envio vai o PID mais atrasado em relação ao seu período. Com os 8 PIDs, são cerca de 16 requisições/s.
 - **Um PID por requisição.** Respostas em vários quadros são ignoradas, porque pedir a continuação exigiria transmitir um quadro de controle de fluxo, que a lista fechada não permite.
 - **Resposta válida:** vem da central escolhida, no modo `0x41`, com o PID pedido e bytes suficientes. Os bytes crus e o instante são guardados. Uma resposta atrasada ainda vale como valor do seu PID.
-- **PID que não responde.** Depois de 5 faltas seguidas, sai da agenda até a próxima descoberta e some da amostra.
-- **Carro sem resposta.** Depois de 2 s sem nenhuma resposta, o estado passa a SEM_RESPOSTA. Os 2 s toleram as centrais que reiniciam na partida do motor.
+- **PID que não responde.** Uma falta só conta se o carro respondeu a outra requisição desde a pergunta anterior a esse PID. Depois de 5 faltas seguidas, o PID sai da agenda até a próxima descoberta e some da amostra.
+  - Assim, quando o carro inteiro se cala, nenhum PID sai da agenda. Os valores ficam na amostra, com a idade crescendo, até a regra dos 2 s abaixo.
+  - Sem essa condição, o RPM e a velocidade, perguntados a cada 200 ms, sairiam da agenda 1 s depois de a ignição desligar. Uma agenda só com eles ficaria vazia antes dos 2 s, e o OBD pararia em LENDO sem perguntar nada (achado do protótipo do #9, Q13).
+- **Carro sem resposta.** Depois de 2 s sem nenhuma resposta, o estado passa a SEM_RESPOSTA. Os 2 s toleram as centrais que reiniciam na partida do motor. A regra só vale com a agenda não vazia: com a agenda vazia (§2.3, passo 5), não há requisições, e o estado fica em LENDO.
 - **Falha.** Os estados *error passive* ou *bus-off* (`on_state_change`) levam a FALHA_CAN.
 - **Amostras OBD.** Saem na taxa de envio do OBD, independentes da agenda, com os valores que existirem naquele instante.
 
@@ -176,7 +178,7 @@ O firmware não usa `twai_node_recover()` (#10 Q3). A norma pede 128 × 11 bits 
 | Intervalo mínimo entre requisições | 50 ms (20/s) | D2 |
 | Período do RPM e da velocidade | 200 ms | #8 Q5 |
 | Período dos outros PIDs | 1 s | #8 Q5 |
-| Faltas para tirar um PID da agenda | 5 seguidas | #8 Q9 |
+| Faltas para tirar um PID da agenda | 5 seguidas, contadas só enquanto o carro responde a outras requisições | #8 Q9, #9 Q13 |
 | Carro sem resposta | 2 s | #8 Q6 |
 | Nova pergunta sem resposta | 2 s no 1º minuto, depois 10 s | #8 Q7 |
 | Espera depois de uma falha | 10 s | #8 Q8 |
@@ -206,7 +208,7 @@ stateDiagram-v2
 |---|---|---|
 | O carro liga com a Pi pronta | ESPERANDO_PI → ESCUTANDO → DESCOBRINDO → LENDO | Valores OBD em cerca de 1,2 s depois do 1º PING |
 | Partida do motor: as centrais reiniciam por cerca de 0,5 s | Continua em LENDO, porque são menos de 2 s | Não há interrupção; as idades crescem por um momento |
-| A ignição é desligada | LENDO → SEM_RESPOSTA, depois de 2 s | As amostras OBD param; uma pergunta a cada 2 s e, depois de 1 minuto, a cada 10 s |
+| A ignição é desligada | LENDO → SEM_RESPOSTA, depois de 2 s; nenhum PID sai da agenda antes disso | As amostras OBD param, todas ao mesmo tempo; uma pergunta a cada 2 s e, depois de 1 minuto, a cada 10 s |
 | O carro está a 250 kbit/s e tem tráfego | ESCUTANDO → VELOCIDADE_ERRADA, a cada 10 s | Nunca transmite; STATUS com o estado 5 |
 | O carro está a 250 kbit/s e é mudo (gateway) | ESCUTANDO → DESCOBRINDO → FALHA_CAN, três vezes → BLOQUEADO | 3 quadros ao todo, em cerca de 22 s; STATUS com o estado 8 |
 | Curto na fiação do CAN | ESCUTANDO → LINHA_PRESA, a cada 10 s | Nunca transmite; STATUS com o estado 6 |

@@ -6,6 +6,7 @@ As decisões por trás deste documento estão nas ADRs:
 - [ADR-0003](adr/0003-simulacao-ou-real-nunca-os-dois.md): simulação e fontes reais nunca convivem no projeto.
 - [ADR-0005](adr/0005-codigo-testado-no-notebook-antes-das-placas.md): o código é testado no notebook antes de ir para as placas.
 - [ADR-0008](adr/0008-nucleo-passivo-chamado-pela-plataforma.md): o código portátil é um núcleo passivo, chamado pela plataforma.
+- [ADR-0009](adr/0009-imu-sim-pelo-usb-na-fase-4.md): na fase 4, a IMU simulada recebe a IMU_SIM pelo USB.
 
 O comportamento que o núcleo implementa está no [`PROTOCOLO.md`](PROTOCOLO.md) e no [`MAQUINAS-DE-ESTADO.md`](MAQUINAS-DE-ESTADO.md). Os termos seguem o [`CONTEXT.md`](../CONTEXT.md).
 
@@ -63,6 +64,7 @@ O núcleo só faz alguma coisa quando a plataforma o chama. Cada chamada traz o 
 | Resultado da transmissão | Callbacks `on_error` e `on_tx_done`, juntados num resultado só (§3.1) | O próprio adaptador, logo depois do `write()` | Entrega à máquina do OBD |
 | Estado do barramento | Callback `on_state_change` | Nunca acontece | Conta `bus_off`; *error passive* e *bus-off* levam a FALHA_CAN |
 | Bytes da Pi | Tarefa leitora da UART | Leitura do pty | Remonta as mensagens, responde ao PING e aplica TAXAS |
+| Bytes do USB (só na fase 4, com a IMU simulada) | Tarefa leitora da UART0 (§5) | Não há: a IMU_SIM chega pelo pty | Remonta as mensagens e entrega só as de desenvolvimento |
 | Aviso de log | Gancho de log do ESP-IDF | Não há | Vira uma mensagem LOG, com o limite de 10/s |
 | Prazo vencido | Fim da espera na fila | Fim do `poll()` | Executa o que estava marcado para aquele instante |
 
@@ -89,6 +91,7 @@ public:
     void on_can_tx_result(TxResult result, uint64_t t_us);
     void on_can_bus_state(BusState state, uint64_t t_us);
     void on_link_bytes(const uint8_t* data, size_t len, uint64_t t_us);
+    void on_dev_bytes(const uint8_t* data, size_t len, uint64_t t_us);   // fase 4, UART0 (§5)
     void on_platform_log(LogLevel level, const char* text, uint64_t t_us);
     void on_deadline(uint64_t now_us);
 
@@ -191,7 +194,7 @@ Tem uma única operação, `heap_min()`: a menor memória livre já registrada, 
 
 Com uma fila só, os eventos chegam ao núcleo na ordem em que aconteceram, e os testes reproduzem essa ordem.
 
-**Tarefas.** São duas tarefas nossas, a do núcleo e a leitora da UART, as duas no watchdog de 3 s. A tarefa do núcleo alimenta o watchdog a cada volta do laço.
+**Tarefas.** São duas tarefas nossas, a do núcleo e a leitora da UART, as duas no watchdog de 3 s. A tarefa do núcleo alimenta o watchdog a cada volta do laço. Na fase 4, com a IMU simulada, entra uma terceira, a leitora da UART0, também no watchdog (§5).
 
 **Fila cheia.** Se a fila de eventos encher, as perdas são contadas, e o núcleo avisa com um LOG na volta seguinte.
 
@@ -216,7 +219,7 @@ Com uma fila só, os eventos chegam ao núcleo na ordem em que aconteceram, e os
 ### 4.2 Notebook
 
 - **Laço.** Uma única thread faz `poll()` no socket do `vcan0` e no pty, com o próximo prazo do núcleo como limite de espera.
-- **Partida.** `program --can vcan0`. O firmware cria o pty e um atalho de caminho fixo, `/tmp/vguard-esp32`, que o decodificador e o simulador abrem. Na fase 2, os mesmos programas abrem a `/dev/ttyUSB0` no lugar dele.
+- **Partida.** `program --can vcan0`. O firmware cria o pty e um atalho de caminho fixo, `/tmp/vguard-esp32`, que o decodificador e o simulador abrem. Na fase 2, os mesmos programas abrem a `/dev/ttyUSB0` no lugar dele. O simulador do PC pode iniciar o firmware como processo filho, para reiniciá-lo por um botão ([`SIMULADOR.md` §4](SIMULADOR.md)).
 - **`BootInfo`.** O `boot` é sorteado, o motivo de reinício é 1 (energia) e a `plataforma` é 0.
 - **Logs.** Saem também no terminal.
 - **Sem watchdog.**
@@ -249,8 +252,12 @@ TEST_ASSERT_EQUAL(8, h.last_status().obd_state);        // BLOQUEADO
   - Com a marca de falha ligada, o `read()` falha. É assim que o simulador provoca uma falha da IMU.
   - Se passar mais de 1 s sem mensagem, o `read()` também falha. Depois de 10 falhas seguidas, a IMU entra em FALHA, como um sensor desligado.
 - **Como a `0x83` chega a ela.** O núcleo não conhece a simulação. Ele entrega as mensagens de desenvolvimento a quem se registrou com `register_dev_handler()`, e a IMU simulada se registra para a `0x83`. Sem ninguém registrado, a mensagem soma 1 em `rejeitadas`.
+- **Fase 4 (ADR-0009).** Os fios da Pi ficam numa UART que não é a UART0, e o simulador do PC manda a `0x83` pelo USB, que é a UART0.
+  - Com a IMU simulada e a ligação com a Pi fora da UART0, uma tarefa a mais lê a UART0 e entrega os bytes ao núcleo por `on_dev_bytes()`.
+  - O `on_dev_bytes()` remonta as mensagens como o `on_link_bytes()`, mas só entrega as de desenvolvimento aos registrados. As demais, como um PING, somam 1 em `rejeitadas`.
+  - Com a IMU real, a UART0 não é lida.
 - **Como escolher.** No ESP32, uma constante no `main` escolhe entre a IMU real e a simulada; trocar exige recompilar, como a constante da UART na ADR-0005. Cada binário tem uma IMU só, então não é uma chave em tempo de execução (ADR-0003). O notebook não tem IMU real e sempre usa a simulada.
-- **Como apagar.** Basta remover a pasta `lib/imu_sim/`, a constante e as linhas que a montam nos `main`. O núcleo não muda.
+- **Como apagar.** Basta remover a pasta `lib/imu_sim/`, a constante, as linhas que a montam nos `main` e a leitura da UART0 da fase 4. No núcleo, sai só o `on_dev_bytes()`.
 
 O OBD não tem simulação dentro do firmware: a ECU simulada é um programa no notebook, e o firmware sempre usa o CAN de verdade, seja o `vcan` ou o TWAI.
 
@@ -270,7 +277,7 @@ O `vcan` não tem ACK, disputa, erro de barramento nem *bus-off*: no notebook, t
 | Linha presa | ✔ | — | ✔ |
 | Violação da lista fechada | ✔ | — | — |
 
-Se o simulador do #9 precisar de botões de falha, eles entram depois, só no adaptador do notebook. Esse adaptador não vai para o ESP32, então a ADR-0003 permite.
+O simulador do #9 não tem botões de falha do CAN (#9 Q8). Se fizerem falta, eles entram depois, só no adaptador do notebook, comandados pela entrada do firmware nativo ([`SIMULADOR.md` §9](SIMULADOR.md)). Esse adaptador não vai para o ESP32, então a ADR-0003 permite.
 
 ## 7. Estrutura do repositório
 
@@ -287,7 +294,7 @@ src/
   vguard/            plataforma do ESP32 e app_main: TWAI, GPIO27 e boot, UART, watchdog
   native/            plataforma do notebook e main: SocketCAN, pty, poll()
 test/                Unity: um teste por módulo, mais os cenários com portas falsas
-host/                Python: decodificador e ESP32 falso (#12), ECU simulada, simulador (#9)
+host/                Python: decodificador e ESP32 falso (#12); simulador, modelo do carro, ECU simulada e roteiros (#9)
 ```
 
 - Os ambientes do ESP32 escolhem a pasta do app com `board_build.cmake_extra_args`, e o `native` com `build_src_filter`, como no #6.
@@ -296,7 +303,7 @@ host/                Python: decodificador e ESP32 falso (#12), ECU simulada, si
 
 ## 8. Fora deste documento
 
-- **Ticket #9:** o que o simulador põe na IMU_SIM e como ele é controlado.
+- **[`SIMULADOR.md`](SIMULADOR.md)** (ticket #9): o que o simulador põe na IMU_SIM e como ele é controlado.
 - **[`DECODIFICADOR.md`](DECODIFICADOR.md)** (ticket #12): a API do decodificador para o leitor da Isabela. A IMU_SIM não faz parte dela.
 - **Ticket #13:** os testes de cada cenário e o roteiro da bancada.
 - **Bancada (fase 2):** confirmar o PCNT junto com o TWAI no GPIO26 e medir a sequência do GPIO27.

@@ -155,11 +155,23 @@ O substituto temporário das fontes reais dentro do firmware, usado só no desen
 _Avoid_: modo de teste, emulação
 
 **Simulador do PC**:
-O programa no notebook que define em tempo real o estado do carro e da IMU durante o desenvolvimento e mostra os resultados. Permanece no projeto.
-_Avoid_: simulação (para o programa do PC)
+O programa no notebook que faz o papel do carro e da Pi durante o desenvolvimento: define ao vivo o estado do carro e da IMU, roda roteiros e mostra o que chega do firmware. Permanece no projeto.
+_Avoid_: simulação (para o programa do PC), dashboard
+
+**Modelo do carro**:
+A parte do simulador do PC que calcula, a partir do acelerador, do freio, do volante e da ignição, a velocidade, a rotação, os valores OBD e as leituras da IMU, todos coerentes entre si.
+_Avoid_: física, simulação
+
+**Manobra**:
+Uma ação curta que o simulador do PC aplica ao carro: buraco, lombada, frenagem brusca, curva ou troca de faixa.
+_Avoid_: evento (reservado à Pi), evento de direção, ocorrência
+
+**Roteiro**:
+Um arquivo de texto com ações do simulador do PC em horários fixos, uma por linha, com os mesmos comandos dos botões da tela.
+_Avoid_: script, cenário (reservado aos cenários de teste das máquinas de estado)
 
 **ECU simulada**:
-O programa no notebook que responde às requisições OBD como se fosse o carro, no CAN virtual ou no barramento real. Permanece no projeto.
+A parte do simulador do PC que responde às requisições OBD como se fosse o carro, no CAN virtual ou no barramento real. Permanece no projeto.
 _Avoid_: simulador OBD, ECU falsa
 
 **ESP32 falso**:

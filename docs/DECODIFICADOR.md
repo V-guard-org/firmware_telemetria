@@ -43,7 +43,7 @@ flowchart LR
 
 O decodificador tem dois usuários:
 - o leitor da Isabela, na Pi (fases 3 e 4);
-- o programa do notebook que faz o papel da Pi no desenvolvimento ([#9](https://github.com/V-guard-org/firmware_telemetria/issues/9)), que também mostra o `stats()` ao vivo.
+- o simulador do PC, que faz o papel da Pi no desenvolvimento e mostra o `stats()` ao vivo ([`SIMULADOR.md`](SIMULADOR.md)).
 
 ## 2. Guia para a Isabela
 
@@ -359,7 +359,7 @@ python3 host/fake_esp32.py [--path /tmp/vguard-esp32] [opções]
   - envia OBD com os 8 PIDs, só com a Pi presente, como o firmware: cerca de 1,2 s depois do 1º PING, e nada depois de 3 s sem PING;
   - responde a cada PING com um PONG e aplica o TAXAS, contando em `rejeitadas` os valores fora da lista;
   - envia um LOG de aviso ao iniciar.
-- **Valores.** Seguem um percurso de 60 s em laço: parado, acelera até 60 km/h, anda e freia. A IMU e o OBD seguem o mesmo percurso.
+- **Valores.** Seguem um percurso de 60 s em laço: parado, acelera até 60 km/h, anda e freia. Saem do modelo do carro do simulador (`host/car_model.py`, [`SIMULADOR.md` §3](SIMULADOR.md)), então a IMU e o OBD são coerentes.
 - **Opções para provocar cada caso:**
 
 | Opção | O que faz |
@@ -385,7 +385,7 @@ O código e os nomes ficam em inglês (D18).
 
 ## 6. Fora deste documento
 
-- **Ticket [#9](https://github.com/V-guard-org/firmware_telemetria/issues/9):** o programa do notebook que faz o papel da Pi usa este decodificador. É ele que envia o PING e mostra o `stats()` ao vivo.
+- **[`SIMULADOR.md`](SIMULADOR.md)** (ticket #9): o simulador do PC usa este decodificador no papel da Pi. É ele que envia o PING e mostra o `stats()` ao vivo.
 - **Ticket [#13](https://github.com/V-guard-org/firmware_telemetria/issues/13):** calibrar a sincronização (§3.8), medindo o erro do horário na bancada, e testar o decodificador ponta a ponta com o ESP32 falso e com o firmware.
 - **Isabela:** o leitor da UART e o `gerenciador_eventos`, incluindo o limite de idade para descartar valores do OBD e o uso do `stats()` na saúde do dispositivo.
 - **Nicolas:** o chrony com o PPS do GPS, que faz da hora da Pi o horário GPS.

@@ -115,6 +115,31 @@ _Avoid_: alerta, ocorrência
 Uma condição percebida pelo próprio firmware, como uma frenagem brusca (extensão futura). A Pi decide se ela vira evento.
 _Avoid_: evento (no firmware)
 
+### Código do firmware
+
+**Núcleo**:
+O código portátil do firmware, que roda igual no notebook, no ESP32 e nos testes. Nunca espera, nunca cria tarefas e nunca pergunta a hora: recebe eventos com o instante e age pelas portas.
+_Avoid_: lógica, aplicação
+
+**Camada de plataforma**:
+O código que muda entre o notebook e o ESP32: o laço, as filas, os drivers e o relógio. Entrega os eventos ao núcleo e implementa as portas.
+_Avoid_: HAL, driver (para a camada inteira)
+
+**Porta**:
+Uma interface pela qual o núcleo age: CAN, UART, IMU ou sistema. Cada porta tem um adaptador por plataforma e um falso para os testes.
+_Avoid_: porta serial (que é sempre chamada assim), HAL
+
+**Portão**:
+O módulo do núcleo que confere cada quadro CAN contra a lista fechada antes de entregá-lo à porta CAN. É a única passagem do OBD até ela.
+_Avoid_: filtro (reservado ao filtro de recepção do controlador), firewall
+
+**Resumo da escuta**:
+O que a camada de plataforma conta durante a escuta: quadros válidos, transições no pino RX e o maior trecho dominante. O núcleo decide o próximo estado do OBD por ele.
+
+**Mensagem de desenvolvimento**:
+Uma mensagem que só existe enquanto houver simulação no firmware, como a IMU_SIM. Sai do protocolo junto com a simulação.
+_Avoid_: mensagem de teste, comando de debug
+
 ### Simulação
 
 **Simulação**:

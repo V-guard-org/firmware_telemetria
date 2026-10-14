@@ -92,7 +92,7 @@ O transceptor fica silencioso e o controlador em listen-only por 1 s. O resultad
 | Transições, mas nenhum quadro válido | Outra velocidade | VELOCIDADE_ERRADA |
 | Dominante contínuo por mais de 10 ms | Curto ou defeito na fiação | LINHA_PRESA |
 
-O ESP32 percebe a atividade e a linha presa lendo o próprio pino RX (GPIO26). Os contadores de erro do controlador não servem para isso, porque ficam congelados em listen-only.
+O ESP32 percebe a atividade e a linha presa lendo o próprio pino RX (GPIO26). Os contadores de erro do controlador não servem para isso, porque ficam congelados em listen-only. A camada de plataforma conta tudo isso e entrega ao núcleo um resumo da escuta ([`PLATAFORMA.md` §3.1](PLATAFORMA.md)).
 
 ### 2.2 Liberar e silenciar o transceptor
 
@@ -103,7 +103,9 @@ O ESP32 percebe a atividade e a linha presa lendo o próprio pino RX (GPIO26). O
 
 **Para silenciar**, a cada saída de DESCOBRINDO ou LENDO:
 1. GPIO27 = 1.
-2. Recriar o nó TWAI em listen-only.
+2. Recriar o nó TWAI em listen-only. O nó novo começa em *error active*, com os contadores zerados, então silenciar também tira o controlador do *bus-off*.
+
+Na camada de plataforma, liberar e silenciar são as ações `talk()` e `listen()` da porta CAN. Cada uma executa a sequência inteira, e o código portátil nunca vê o GPIO27 ([`PLATAFORMA.md` §3.1](PLATAFORMA.md)).
 
 A ordem nunca se inverte. Com o transceptor silencioso e o controlador em modo normal, o controlador veria erros no próprio ACK.
 
@@ -152,10 +154,11 @@ Numa noite de 10 h com o sistema ligado, isso dá cerca de 3 600 perguntas, uma 
 - erro de barramento na 1ª requisição, que é a velocidade errada num barramento mudo.
 
 Ao entrar em FALHA_CAN:
-1. O transceptor fica silencioso.
+1. O transceptor fica silencioso, e o nó é recriado em listen-only (§2.2). Isso também tira o controlador do *bus-off*.
 2. A falha é contada.
-3. Se for *bus-off*, chama `twai_node_recover()` e espera o controlador voltar ao *error active*. O receptor funciona com o transceptor silencioso.
-4. Espera 10 s e volta a ESCUTANDO.
+3. Espera 10 s e volta a ESCUTANDO.
+
+O firmware não usa `twai_node_recover()` (#10 Q3). A norma pede 128 × 11 bits recessivos (2,8 ms a 500 kbit/s) antes de um nó em *bus-off* voltar a falar, e o firmware espera 10 s e ainda escuta 1 s. Uma linha presa, que travaria a recuperação, aparece na escuta como LINHA_PRESA.
 
 **BLOQUEADO**, até reiniciar. Há dois caminhos:
 - **A 3ª falha do mesmo boot.** VELOCIDADE_ERRADA e LINHA_PRESA não contam para o limite, porque nesses estados o ESP32 não transmitiu.
@@ -216,11 +219,6 @@ Estes cenários são a base dos testes do #13.
 
 ## 5. Fora deste documento
 
-- **Ticket #10:** como a camada de plataforma oferece essas ações ao código portátil:
-  - o pino de liberação;
-  - recriar o nó em listen-only ou em modo normal;
-  - ler o pino RX;
-  - os motivos de falha;
-  - o relógio.
-- **Driver CAN (ticket #14):** o firmware usa o driver TWAI novo do ESP-IDF 6.1, que tem tudo o que este documento usa: `fail_retry_cnt`, `ack_err`, `arb_lost`, `on_state_change` e `twai_node_recover()`.
+- **[`PLATAFORMA.md`](PLATAFORMA.md)** (ticket #10): como a camada de plataforma oferece ao núcleo o pino de liberação, a recriação do nó, o resumo da escuta, os motivos de falha e o relógio.
+- **Driver CAN (ticket #14):** o firmware usa o driver TWAI novo do ESP-IDF 6.1, que tem tudo o que este documento usa: `fail_retry_cnt`, `ack_err`, `arb_lost`, `on_state_change` e o modo listen-only.
 - **Ticket #13:** como provar cada cenário, no notebook e na bancada.

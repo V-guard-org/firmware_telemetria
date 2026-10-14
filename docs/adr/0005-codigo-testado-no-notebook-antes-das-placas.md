@@ -26,3 +26,7 @@ Para o firmware rodar no notebook, a lógica (OBD, agregação, protocolo, máqu
 - A ECU simulada é um programa no notebook. Na fase 1 ela fala no `vcan`; na fase 2 fala no barramento real através do segundo ESP32, usado como adaptador USB-CAN (protocolo slcan). Ela é escrita uma única vez.
 - Na fase 2, o notebook conversa com o ESP32 pelo USB dele: manda a IMU simulada e lê as amostras. Os fios só entram na fase 4, trocando uma constante no firmware.
 - O build para o notebook não entra no binário do ESP32, então não conta como "simulação no firmware" para a ADR-0003.
+
+## Nota (ticket #10, 14/10/2026)
+
+No notebook, as "threads" da tabela viraram um único laço com `poll()`: o código portátil é um núcleo passivo, chamado pela plataforma ([ADR-0008](0008-nucleo-passivo-chamado-pela-plataforma.md)). A camada de plataforma está descrita em [`docs/PLATAFORMA.md`](../PLATAFORMA.md).

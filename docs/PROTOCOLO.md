@@ -13,7 +13,7 @@ Os termos seguem o [`CONTEXT.md`](../CONTEXT.md).
 
 - O ESP32 transmite desde o boot, sem esperar a Pi. Se ninguém está lendo, as mensagens se perdem, e isso é o esperado (D11).
 - Cada mensagem é COBS com CRC-16 e um cabeçalho de 5 bytes: tipo, `boot` e sequência.
-- Só existem 7 tipos de mensagem:
+- Existem 7 tipos de mensagem, mais 1 de desenvolvimento, que sai junto com a simulação:
 
 | Código | Nome | Sentido | Quando |
 |---|---|---|---|
@@ -24,6 +24,7 @@ Os termos seguem o [`CONTEXT.md`](../CONTEXT.md).
 | `0x05` | LOG | ESP32 → Pi | Quando o firmware registra um aviso ou um erro |
 | `0x81` | PING | Pi → ESP32 | 1 vez por segundo, e logo que a Pi percebe um boot novo |
 | `0x82` | TAXAS | Pi → ESP32 | Quando o STATUS mostra taxas diferentes das que a Pi quer |
+| `0x83` | IMU_SIM | Simulador do PC → ESP32 | Só no desenvolvimento, 100 vezes por segundo (§4.3) |
 
 - Os códigos de `0x00` a `0x7F` vão do ESP32 para a Pi, e os de `0x80` a `0xFF`, da Pi para o ESP32.
 - Não há HELLO nem ACK:
@@ -222,6 +223,25 @@ O corpo é vazio: o `seq` do cabeçalho serve de identificador, e o ESP32 o devo
 - A configuração não fica gravada no ESP32: depois de um reinício, ele volta ao padrão até a Pi reenviar (§6.4).
 - O STATUS tem taxa fixa de 1/s.
 
+### 4.3 IMU_SIM (`0x83`), só no desenvolvimento
+
+Leva os valores da IMU simulada, do simulador do PC para o firmware ([`PLATAFORMA.md` §5](PLATAFORMA.md)). A Pi nunca envia esta mensagem, e ela não faz parte da API do decodificador para o leitor da Isabela (#12).
+
+| Offset | Campo | Tipo | Unidade |
+|---|---|---|---|
+| 0 | `ax`, `ay`, `az` | 3 × i16 | 0,01 m/s² |
+| 6 | `gx`, `gy`, `gz` | 3 × i16 | 0,1 °/s |
+| 12 | `falha` | u8 | 0 normal · 1 a leitura falha |
+
+O corpo tem 13 bytes, a mensagem inteira 20, e no cabo são 22.
+
+- **Valores.** São uma leitura no referencial do sensor. O ESP32 gira para o referencial do carro, como faz com a IMU real; até o T11, essa rotação é a identidade.
+- **Ritmo.** O simulador envia 100 por segundo, uma por leitura. A IMU simulada devolve o último valor recebido a cada leitura.
+- **Falhas.** Com `falha` = 1, ou sem nenhuma IMU_SIM há mais de 1 s, a leitura falha. Depois de 10 falhas seguidas, a IMU entra em FALHA ([`MAQUINAS-DE-ESTADO.md` §3](MAQUINAS-DE-ESTADO.md)).
+- **Firmware sem IMU simulada.** A mensagem soma 1 em `rejeitadas`.
+- **Quando a simulação for apagada** (ADR-0003), esta mensagem sai do protocolo junto com ela.
+- **Conteúdo.** O que o simulador põe nela é decidido no ticket #9.
+
 ## 5. O decodificador, mensagem a mensagem
 
 ```mermaid
@@ -331,6 +351,8 @@ Para o critério de "sem perda relevante" (D16), as amostras perdidas são as la
 
 A 460800 baud cabem cerca de 46 kB/s, então mesmo o pior caso ocupa cerca de 15% da linha.
 
+No sentido contrário, o PING ocupa 9 B/s. No desenvolvimento, a IMU_SIM soma cerca de 2,2 kB/s (100 × 22 bytes).
+
 ## 8. Exemplos byte a byte
 
 Use estes exemplos como vetores de teste no firmware e no decodificador.
@@ -365,5 +387,6 @@ no cabo (9):        02 81 01 02 07 02 1A 01 00
 
 - **Ticket #12:** os dicionários entregues ao leitor da Isabela, os nomes dos campos e as funções do decodificador.
 - **[`MAQUINAS-DE-ESTADO.md`](MAQUINAS-DE-ESTADO.md)** (ticket #8): quando o ESP32 pergunta ao carro, quando o carro conta como "sem resposta", e qual central responde a cada PID.
+- **[`PLATAFORMA.md`](PLATAFORMA.md)** (ticket #10): onde o núcleo portátil monta, envia e recebe estas mensagens, e o que fica na camada de plataforma.
 - **Ticket #13:** como provar tudo isto (testes, ensaio de 2 h).
 - **Ticket da fiação:** qual UART do ESP32 vai para os fios na fase 4.

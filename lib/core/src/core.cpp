@@ -18,6 +18,7 @@ Core::Core(CanPort&, LinkPort& link, ImuPort& imu, SystemPort& system, const Boo
     : link_(link),
       imu_(imu),
       system_(system),
+      imu_machine_(imu, kDefaultImuRate),
       boot_(boot.boot),
       reset_reason_(boot.reset_reason),
       platform_(boot.platform) {
@@ -26,6 +27,7 @@ Core::Core(CanPort&, LinkPort& link, ImuPort& imu, SystemPort& system, const Boo
 }
 
 void Core::start(uint64_t now_us) {
+    imu_machine_.start(now_us);  // antes do STATUS, que já mostra o estado da IMU
     send_status(now_us);
     next_status_us_ = now_us + kStatusPeriodUs;
     flush(now_us);
@@ -67,12 +69,38 @@ void Core::on_link_message(const Message& msg, uint64_t t_us) {
         case MessageType::kTaxas:
             break;  // as taxas mudam no ticket da fila de saída, TAXAS e LOG (#22)
         default:
-            ++counters_[kRejected];  // tipo desconhecido, ou mensagem de desenvolvimento sem registro
+            if (!deliver_dev_message(msg, t_us)) {
+                ++counters_[kRejected];  // tipo desconhecido, ou mensagem de desenvolvimento sem registro
+            }
             break;
     }
 }
 
+bool Core::register_dev_handler(uint8_t type, DevMessageHandler& handler) {
+    const auto as_type = static_cast<MessageType>(type);
+    if (type < 0x80 || as_type == MessageType::kPing || as_type == MessageType::kTaxas ||
+        dev_handler_count_ == kMaxDevHandlers) {
+        return false;
+    }
+    dev_handlers_[dev_handler_count_++] = {type, &handler};
+    return true;
+}
+
+bool Core::deliver_dev_message(const Message& msg, uint64_t t_us) {
+    for (size_t i = 0; i < dev_handler_count_; ++i) {
+        if (dev_handlers_[i].type == static_cast<uint8_t>(msg.type)) {
+            return dev_handlers_[i].handler->on_dev_message(msg.body, msg.body_len, t_us);
+        }
+    }
+    return false;
+}
+
 void Core::on_deadline(uint64_t now_us) {
+    ImuSampleBody sample;
+    if (imu_machine_.on_deadline(now_us, sample)) {
+        uint8_t body[kMaxBody];
+        send(MessageType::kImu, body, build_imu_body(sample, body));
+    }
     if (now_us >= next_status_us_) {
         send_status(now_us);
         // Mantém o ritmo de 1 s; depois de um atraso maior que 1 s, recomeça a partir de agora.
@@ -85,7 +113,9 @@ void Core::on_deadline(uint64_t now_us) {
 }
 
 uint64_t Core::next_deadline_us() const {
-    return next_status_us_ < retry_write_us_ ? next_status_us_ : retry_write_us_;
+    const uint64_t next = next_status_us_ < retry_write_us_ ? next_status_us_ : retry_write_us_;
+    const uint64_t imu = imu_machine_.next_deadline_us();
+    return imu < next ? imu : next;
 }
 
 void Core::send_status(uint64_t t_us) {
@@ -96,6 +126,8 @@ void Core::send_status(uint64_t t_us) {
     status.reset_reason = reset_reason_;
     status.imu_rate = kDefaultImuRate;
     status.obd_rate = kDefaultObdRate;
+    status.imu_state = imu_machine_.failed() ? 1 : 0;
+    counters_[kImuFailures] = imu_machine_.failures();
     for (size_t i = 0; i < kCounterCount; ++i) {
         status.counters[i] = counters_[i];
     }

@@ -5,6 +5,7 @@
 
 #include <cstdint>
 #include <cstring>
+#include <optional>
 #include <vector>
 
 #include "core.h"
@@ -76,14 +77,40 @@ private:
     bool stuck_ = false;
 };
 
-// A IMU que ainda não lê nada: a máquina da IMU chega no ticket da IMU de ponta a ponta.
+// A IMU falsa. Sem nada programado, é um sensor ausente: o reinício falha. Presente, ela
+// devolve as leituras do roteiro, uma por chamada, e depois sempre a mesma leitura; uma
+// leitura vazia no roteiro é uma leitura com falha.
 class FakeImu : public ImuPort {
 public:
-    bool read(ImuReading&) override { return false; }
-    bool restart() override { return true; }
+    bool read(ImuReading& out, uint64_t) override {
+        if (next_ < script.size()) {
+            const std::optional<ImuReading>& r = script[next_++];
+            if (r) {
+                out = *r;
+            }
+            return r.has_value();
+        }
+        if (failing) {
+            return false;
+        }
+        out = reading;
+        return true;
+    }
+    bool restart(uint64_t) override {
+        ++restarts;
+        return present;
+    }
     bool simulated() const override { return is_simulated; }
 
+    bool present = false;
+    bool failing = false;                       // depois do roteiro, toda leitura falha
+    ImuReading reading{{0, 0, 9.81f}, {0, 0, 0}};  // parado e nivelado
+    std::vector<std::optional<ImuReading>> script;
     bool is_simulated = true;
+    uint32_t restarts = 0;
+
+private:
+    size_t next_ = 0;
 };
 
 class FakeSystem : public SystemPort {

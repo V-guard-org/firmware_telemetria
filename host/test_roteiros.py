@@ -46,6 +46,9 @@ class ReadingRoteiros(unittest.TestCase):
                     "acelerador 0%", "acelerador 30%", "acelerador 100%", "freio 50%",
                     "volante -20%", "volante +100%", "volante 15%", "solta tudo",
                     "pi ping desliga", "pi ping liga", "reinicia esp32",
+                    "buraco", "lombada", "frenagem brusca", "curva esquerda", "curva direita",
+                    "troca de faixa", "imu falha liga", "imu falha desliga", "imu sem-sinal liga",
+                    "imu sem-sinal desliga", "ruído liga", "ruído desliga",
                     "confere imu ok", "confere imu falha", "confere boots 1",
                     "confere vazias obd 0", "confere vazias imu 12"]
         commands += [f"confere obd {state}" for state in (
@@ -60,7 +63,7 @@ class ReadingRoteiros(unittest.TestCase):
     def test_a_value_out_of_range_names_its_line(self):
         for line in ("acelerador 130%", "acelerador -5%", "freio 101%", "volante -101%", "acelerador 30",
                      "confere obd voando", "confere imu bem", "confere boots -1", "confere vazias gps 1",
-                     "pi ping talvez", "ignição"):
+                     "pi ping talvez", "ignição", "imu falha", "ruído talvez", "curva"):
             with self.subTest(line=line), self.assertRaisesRegex(RoteiroError, r"^linha 2: "):
                 parse_roteiro(f"0:00 partida\n0:01 {line}\n")
 

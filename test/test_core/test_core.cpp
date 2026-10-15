@@ -59,6 +59,7 @@ static void test_status_at_start_has_every_field() {
     FakeImu imu;
     FakeSystem sys;
     sys.min_free_heap = 123'456;
+    imu.present = true;
     Harness h(can, link, imu, sys, {0xBEEF, ResetReason::kWatchdog, Platform::kNotebook, "0.1.0-teste"});
 
     h.start(1'234);
@@ -252,6 +253,7 @@ static void test_core_never_allocates_memory() {
     FakeLink link;
     FakeImu imu;
     FakeSystem sys;
+    imu.present = true;  // a IMU lê e manda amostras o tempo todo
     const size_t before = g_allocations;
 
     Harness h(can, link, imu, sys);

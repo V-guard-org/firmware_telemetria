@@ -219,10 +219,12 @@ Com uma fila só, os eventos chegam ao núcleo na ordem em que aconteceram, e os
 ### 4.2 Notebook
 
 - **Laço.** Uma única thread faz `poll()` no socket do `vcan0` e no pty, com o próximo prazo do núcleo como limite de espera.
-- **Partida.** `program --can vcan0`. O firmware cria o pty e um atalho de caminho fixo, `/tmp/vguard-esp32`, que o decodificador e o simulador abrem. Na fase 2, os mesmos programas abrem a `/dev/vguard-esp32` no lugar dele ([`BANCADA.md` §5](BANCADA.md)). O simulador do PC pode iniciar o firmware como processo filho, para reiniciá-lo por um botão ([`SIMULADOR.md` §4](SIMULADOR.md)).
+- **Partida.** `program --can vcan0`. O firmware cria o pty e um atalho de caminho fixo, `/tmp/vguard-esp32`, que o decodificador e o simulador abrem. A opção `--path` troca o caminho do atalho, como no ESP32 falso; o teste de ponta a ponta a usa para não disputar o atalho com um simulador aberto. Na fase 2, os mesmos programas abrem a `/dev/vguard-esp32` no lugar dele ([`BANCADA.md` §5](BANCADA.md)). O simulador do PC pode iniciar o firmware como processo filho, para reiniciá-lo por um botão ([`SIMULADOR.md` §4](SIMULADOR.md)).
 - **`BootInfo`.** O `boot` é sorteado, o motivo de reinício é 1 (energia) e a `plataforma` é 0.
 - **Logs.** Saem também no terminal.
+- **Sem leitor.** O firmware fica com o seu lado do pty aberto, para que o `poll()` não acorde sem parar quando ninguém lê. O pty guarda cerca de 17 KB, o adaptador guarda mais 4 KB, e depois disso a fila do núcleo descarta (§3.3).
 - **Sem watchdog.**
+- **Versão do firmware.** É a de `[firmware] version` no `platformio.ini`, seguida do commit e de `-dirty` se há mudanças sem commit, por exemplo `0.1.0-a58af37`. O script `firmware_version.py` a monta a cada build.
 
 ### 4.3 Testes
 
@@ -294,6 +296,7 @@ src/
   vguard/            plataforma do ESP32 e app_main: TWAI, GPIO27 e boot, UART, watchdog
   native/            plataforma do notebook e main: SocketCAN, pty, poll()
 test/                Unity: um teste por módulo, mais os cenários com portas falsas
+  support/           portas falsas e o harness com o relógio falso (§4.3)
 host/                Python: decodificador e ESP32 falso (#12); simulador, modelo do carro, ECU simulada e roteiros (#9)
 ```
 

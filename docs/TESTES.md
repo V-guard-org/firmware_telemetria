@@ -86,6 +86,7 @@ Os testes Python usam o `unittest` da biblioteca padrão, para rodar na Pi sem i
 | `host/test_ecu_sim.py` | A ida e volta de cada PID: a fórmula inversa da ECU simulada e a fórmula do decodificador devolvem o valor de partida, dentro da resolução do PID. Também o PID ausente e o mudo, as duas centrais e o `fora_da_lista`. Roda sem o `vcan0`, porque a ECU simulada não abre o socket ([`SIMULADOR.md` §2](SIMULADOR.md)) |
 | `host/test_fake_esp32.py` | 60 s de ESP32 falso no relógio falso, ligados ao `Decoder` sem pty: chegam amostras de IMU e de OBD, sem `lost` nem `corrupt` ([`DECODIFICADOR.md` §4](DECODIFICADOR.md)) |
 | `host/test_roteiros.py` | Os roteiros prontos são lidos sem erro; uma linha desconhecida dá erro com o número da linha |
+| `host/test_native_firmware.py` | O firmware nativo de verdade, no pty, com o `Decoder`: o STATUS chega com a plataforma notebook e o OBD em ESPERANDO_PI, os PONGs dão a sincronização, e o atalho some quando o firmware termina. Sem o firmware compilado, o teste é pulado, como na Pi |
 
 ### 3.3 Um comando
 
@@ -93,7 +94,7 @@ Os testes Python usam o `unittest` da biblioteca padrão, para rodar na Pi sem i
 ./verifica.sh
 ```
 
-O script roda `pio test -e native` e `python3 -m unittest discover -s host`. Ele precisa passar antes de cada push. Não há CI no GitHub por enquanto (#13 Q9); se a equipe crescer, o mesmo script vira o passo da CI.
+O script roda `pio test -e native`, compila o firmware nativo com `pio run -e native` e roda `python3 -m unittest discover -s host`. Ele precisa passar antes de cada push. Não há CI no GitHub por enquanto (#13 Q9); se a equipe crescer, o mesmo script vira o passo da CI.
 
 ## 4. Roteiros que se conferem sozinhos
 

@@ -5,6 +5,7 @@ docs/PROTOCOLO.md and this API in docs/DECODIFICADOR.md.
 """
 
 import binascii
+import collections
 import copy
 import logging
 import struct
@@ -145,7 +146,7 @@ class Decoder:
     def feed(self, data):
         """Bytes read from the port. Returns the samples ready for update()."""
         now = self._clock.monotonic()
-        wall = self._clock.time() - now     # taken at each delivery, so a step of chrony counts at once
+        wall_offset = self._clock.time() - now  # read at each delivery, so a step of chrony counts at once
         *frames, rest = (self._buffer + data).split(b"\x00")
         if self._skipping:
             if frames:
@@ -164,7 +165,7 @@ class Decoder:
                 sample = self._handle_frame(frame, now)
                 if sample:
                     source, t_us, values = sample
-                    samples.append((source, self._sync.to_monotonic(t_us) + wall, values))
+                    samples.append((source, self._sync.to_monotonic(t_us) + wall_offset, values))
         return samples
 
     def data_to_send(self):
@@ -245,10 +246,9 @@ class Decoder:
                 self._counters["corrupt"] += 1
             else:
                 t_us, values, skipped = parsed
-                sample = self._deliver("obd", t_us, values)
-                if sample:
-                    self._counters["skipped_values"] += skipped
-                return sample
+                self._counters["skipped_values"] += skipped
+                if values["age_ms"]:    # some value left; {} would mean the OBD stopped (§3.4)
+                    return self._deliver("obd", t_us, values)
         else:
             self._counters["unknown"] += 1
         return None
@@ -270,55 +270,60 @@ class Decoder:
         return data
 
 
+_Pair = collections.namedtuple("_Pair", "rtt t_us mid")    # mid: the Pi's instant halfway through
+
+
 class _Sync:
     """Turns the ESP32's t_us into the Pi's monotonic clock, from the PING/PONG pairs (§3.8)."""
 
     def __init__(self):
-        self._best = {}                 # 10 s of the ESP32's clock → its fastest (rtt, t_us, mid)
-        self._last = None               # (rtt, arrival) of the last pair accepted
-        self._line = None               # (t_us, mid, slope): the Pi's instant at t_us, and s per µs
+        self._best = {}                 # each 10 s of the ESP32's clock → its fastest pair
+        self._last = None               # the last pair accepted, and when its PONG arrived
+        self._last_arrival = None
+        self._origin_us = None          # the line: the Pi's instant origin_at at origin_us,
+        self._origin_at = None          # then slope seconds per µs
+        self._slope = None
         self._drift_ppm = None
 
     @property
     def ready(self):
-        return self._line is not None
+        return self._slope is not None
 
     def add(self, sent_at, arrived_at, t_us):
-        rtt = arrived_at - sent_at
-        self._last = (rtt, arrived_at)
+        pair = _Pair(arrived_at - sent_at, t_us, (sent_at + arrived_at) / 2)
+        self._last, self._last_arrival = pair, arrived_at
         bucket = t_us // (BUCKET_S * 1_000_000)
-        if bucket not in self._best or rtt < self._best[bucket][0]:
-            self._best[bucket] = (rtt, t_us, (sent_at + arrived_at) / 2)
+        if bucket not in self._best or pair.rtt < self._best[bucket].rtt:
+            self._best[bucket] = pair
             if len(self._best) > BUCKETS:
                 del self._best[min(self._best)]
             self._fit()
 
     def _fit(self):
-        pairs = [(t_us, mid) for _rtt, t_us, mid in self._best.values()]
-        first_us, last_us = min(pairs)[0], max(pairs)[0]
-        if last_us - first_us < MIN_SPAN_S * 1_000_000:
+        oldest, newest = self._best[min(self._best)], self._best[max(self._best)]
+        if newest.t_us - oldest.t_us < MIN_SPAN_S * 1_000_000:
             # 1 ms of noise over 10 s would tilt the line by 100 ppm, more than a crystal drifts.
-            self._line = (*max(pairs), 1e-6)
+            self._origin_us, self._origin_at, self._slope = newest.t_us, newest.mid, 1e-6
             self._drift_ppm = None
             return
         # Least squares, around the mean so that hours of t_us keep their precision.
-        mean_us = sum(t_us for t_us, _ in pairs) / len(pairs)
-        mean_at = sum(mid for _, mid in pairs) / len(pairs)
-        slope = (sum((t_us - mean_us) * (mid - mean_at) for t_us, mid in pairs)
-                 / sum((t_us - mean_us) ** 2 for t_us, _ in pairs))
-        self._line = (mean_us, mean_at, slope)
-        self._drift_ppm = (1e-6 / slope - 1) * 1e6     # positive: the ESP32's clock runs fast
+        pairs = self._best.values()
+        mean_us = sum(pair.t_us for pair in pairs) / len(pairs)
+        mean_at = sum(pair.mid for pair in pairs) / len(pairs)
+        self._slope = (sum((pair.t_us - mean_us) * (pair.mid - mean_at) for pair in pairs)
+                       / sum((pair.t_us - mean_us) ** 2 for pair in pairs))
+        self._origin_us, self._origin_at = mean_us, mean_at
+        self._drift_ppm = (1e-6 / self._slope - 1) * 1e6   # positive: the ESP32's clock runs fast
 
     def to_monotonic(self, t_us):
-        line_us, line_at, slope = self._line
-        return line_at + (t_us - line_us) * slope
+        return self._origin_at + (t_us - self._origin_us) * self._slope
 
     def health(self, now):
-        rtt, arrival = self._last or (None, None)
+        last = self._last
         return {
             "pairs": len(self._best),
-            "rtt_ms": None if rtt is None else round(rtt * 1000, 2),
-            "age_s": None if arrival is None else round(now - arrival, 1),
+            "rtt_ms": None if last is None else round(last.rtt * 1000, 2),
+            "age_s": None if last is None else round(now - self._last_arrival, 1),
             "drift_ppm": None if self._drift_ppm is None else round(self._drift_ppm, 1),
         }
 
@@ -333,21 +338,21 @@ def _parse_obd(body):
     t_us, count = _OBD.unpack_from(body)
     sample, ages = {}, {}
     skipped = 0
-    at = _OBD.size
+    offset = _OBD.size
     for _ in range(count):
-        if at + _OBD_VALUE.size > len(body):
+        if offset + _OBD_VALUE.size > len(body):
             return None
-        pid, age, size = _OBD_VALUE.unpack_from(body, at)
-        at += _OBD_VALUE.size
-        if at + size > len(body):
+        pid, age, size = _OBD_VALUE.unpack_from(body, offset)
+        offset += _OBD_VALUE.size
+        if offset + size > len(body):
             return None
         name, used, formula = _OBD_FORMULAS.get(pid, (None, None, None))
         if formula is None or size < used:
             skipped += 1
         else:
-            sample[name] = formula(body[at:at + size])
+            sample[name] = formula(body[offset:offset + size])
             ages[name] = age
-        at += size
+        offset += size
     sample["age_ms"] = ages
     return t_us, sample, skipped
 

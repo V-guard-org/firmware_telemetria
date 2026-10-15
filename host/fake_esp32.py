@@ -31,6 +31,7 @@ DEFAULT_OBD_RATE = 5
 # Times in µs of the fake's own clock, like the ESP32's t_us
 STATUS_INTERVAL_US = 1_000_000
 TICK_US = 10_000                # the IMU is read 100 times a second (PROTOCOLO.md §3.2)
+READS_PER_S = 1_000_000 // TICK_US
 PI_TIMEOUT_US = 3_000_000       # the Pi is present while its PINGs arrive within 3 s
 LISTEN_US = 1_000_000           # MAQUINAS-DE-ESTADO.md §2.1
 DISCOVERY_US = 50_000           # 01 00, 01 20 and 01 40, each answered in about 15 ms
@@ -60,6 +61,7 @@ _PIDS = {
 _PIDS_ANNOUNCED = (*_PIDS, 0x20, 0x40)  # 0x20 and 0x40 tell the firmware to ask 01 20 and 01 40
 
 # The messages, laid out here apart from the decoder (PROTOCOLO.md §3)
+_HEADER = struct.Struct("<BHH")     # type, boot, seq
 _STATUS = struct.Struct("<BQBBBBBBB12s9II")
 _IMU = struct.Struct("<Q12h")
 _OBD = struct.Struct("<QB")
@@ -71,7 +73,8 @@ _SOURCE_IMU_SIMULATED = 0x01
 _RESET_POWER_ON = 1
 _IMU_OK = 0
 _WAITING_PI, _LISTENING, _DISCOVERING, _READING = range(4)     # estado_obd
-_OBD_SENT, _OBD_ANSWERED = 3, 4     # positions in the 9 counters
+_ESP32_COUNTER_COUNT = 9
+_OBD_SENT, _OBD_ANSWERED = 3, 4     # positions in the counters
 _LOG_WARNING = 2
 _IMU_SCALES = (100, 100, 100, 10, 10, 10)   # 0.01 m/s² and 0.1 °/s
 
@@ -81,7 +84,7 @@ _POLL_S = 0.005
 # A reader takes what arrives at least every 100 ms (DECODIFICADOR.md §2.2), so
 # more than this left unread means nobody has the port open.
 _UNREAD_LIMIT = 2048
-_MAX_FRAME = 258
+_MAX_FRAME = 258                    # the longest message on the wire, with its 0x00 (PROTOCOLO.md §2)
 
 
 class FakeEsp32:
@@ -109,7 +112,7 @@ class FakeEsp32:
         self._answers = {}              # PID → (raw bytes, t_us of the car's answer)
         self._next_obd_us = 0
         self._readings = []             # (t_us, reading) of the IMU interval so far
-        self._counters = [0] * 9
+        self._counters = [0] * _ESP32_COUNTER_COUNT
         self._pongs = []
         self._samples = []              # (type, body) of IMU and OBD, in the order they were made
         self._logs = []
@@ -161,7 +164,7 @@ class FakeEsp32:
 
     def _read_imu(self, t_us):
         self._readings.append((t_us, self._car.imu))
-        if len(self._readings) < 100 // DEFAULT_IMU_RATE:
+        if len(self._readings) < READS_PER_S // DEFAULT_IMU_RATE:
             return
         instants = [at for at, _ in self._readings]
         axes = list(zip(*(reading for _, reading in self._readings)))
@@ -182,8 +185,7 @@ class FakeEsp32:
             self._logs.append((t_us, _FAKE_WARNING))    # any reader that just opened the port sees it
         elif self._obd_state == _LISTENING and t_us >= self._obd_until_us:
             self._obd_state, self._obd_until_us = _DISCOVERING, t_us + DISCOVERY_US
-            self._counters[_OBD_SENT] += 3
-            self._counters[_OBD_ANSWERED] += 3
+            self._count_requests(3)                     # 01 00, 01 20 and 01 40
         elif self._obd_state == _DISCOVERING and t_us >= self._obd_until_us:
             self._obd_state = _READING
             self._pids = _pid_map(_PIDS_ANNOUNCED)
@@ -197,8 +199,7 @@ class FakeEsp32:
             if t_us >= self._next_ask_us[pid]:
                 self._answers[pid] = (bytes(to_raw(values[name])), t_us)
                 self._next_ask_us[pid] += period_us
-                self._counters[_OBD_SENT] += 1
-                self._counters[_OBD_ANSWERED] += 1
+                self._count_requests(1)
         if t_us >= self._next_obd_us:
             body = _OBD.pack(t_us, len(self._answers))
             for pid, (raw, answered_us) in sorted(self._answers.items()):
@@ -206,6 +207,10 @@ class FakeEsp32:
                 body += _OBD_VALUE.pack(pid, age_ms, len(raw)) + raw
             self._samples.append((OBD, body))
             self._next_obd_us += 1_000_000 // DEFAULT_OBD_RATE
+
+    def _count_requests(self, count):
+        self._counters[_OBD_SENT] += count
+        self._counters[_OBD_ANSWERED] += count      # the fake car always answers
 
     def _status_body(self, t_us):
         return _STATUS.pack(
@@ -253,9 +258,10 @@ def _ping_seq(frame):
     except ValueError:
         return None
     payload, crc = data[:-2], data[-2:]
-    if len(payload) < 5 or payload[0] != PING or int.from_bytes(crc, "little") != crc16(payload):
+    if len(payload) < _HEADER.size or int.from_bytes(crc, "little") != crc16(payload):
         return None
-    return int.from_bytes(payload[3:5], "little")
+    msg_type, _boot, seq = _HEADER.unpack_from(payload)
+    return seq if msg_type == PING else None
 
 
 def main(argv=None):

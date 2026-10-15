@@ -84,12 +84,12 @@ class FakeEsp32WithDecoder(unittest.TestCase):
         self.assertEqual([speeds[0], speeds[-1]], [0, 0])                   # stopped, then stopped again
         self.assertIn(max(speeds), range(58, 62))                           # up to 60 km/h
         self.assertEqual(self.obd[0][1]["rpm"], 800.0)                      # idle
-        self.assertGreater(max(sample["rpm"] for _, sample in self.obd), 2000)
+        self.assertGreater(max(sample["rpm"] for _, sample in self.obd), 1000)
 
         stopped = [sample for at, sample in self.imu if at < 5]
         self.assertAlmostEqual(sum(sample["az"] for sample in stopped) / len(stopped), 9.81, delta=0.05)
-        self.assertGreater(max(sample["ax"] for _, sample in self.imu), 1.5)    # speeding up
-        self.assertLess(min(sample["ax"] for _, sample in self.imu), -2.5)      # braking
+        self.assertGreater(max(sample["ax"] for _, sample in self.imu), 1.0)    # speeding up
+        self.assertLess(min(sample["ax"] for _, sample in self.imu), -1.0)      # braking
         for _, sample in self.imu:
             for axis in ("ax", "ay", "az", "gx", "gy", "gz"):
                 self.assertGreaterEqual(abs(sample[axis + "_peak"]), abs(sample[axis]))

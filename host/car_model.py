@@ -20,18 +20,24 @@ DRAG = 0.0012                   # m/s² per (m/s)²: grows with speed
 MAX_LATERAL = 6.0               # m/s² at full steering
 WHEELBASE = 2.6                 # m: slowly, the turn follows the geometry
 MAX_WHEEL_TAN = 0.6             # tangent of the wheel angle at full steering
+GRIP_MIN_SPEED = 0.5            # m/s: below this, only the geometry limits the turn
 ECUS_MUTE_S = 0.5               # after the start button
 CRANK_S = 1.0
 CRANK_RPM = 250
 IDLE_RPM = 800
 GEAR_KMH = (0, 18, 32, 50, 70, 95)          # the 6 automatic gears, from this speed up
 RPM_PER_KMH = (125, 72, 50, 38, 30, 25)
-LAUNCH_RPM = 1500               # the torque converter slips below 3 km/h: rpm rises with the throttle
+LAUNCH_KMH = 3                  # below this the torque converter slips:
+LAUNCH_RPM = 1500               # the rpm rises with the throttle, up to this much over idle
 THROTTLE_RPM = 300
 RPM_RESPONSE = 6.0              # 1/s
 ENGINE_STOP_RPM_S = 2000        # rpm lost per second once the engine stops
 
-# OBD values (§3.2)
+# OBD values (§3.2); throttle is the driver's 0 to 1
+LOAD_IDLE, LOAD_PER_THROTTLE = 18, 70           # % with the engine running; 0 with it stopped
+MAP_IDLE, MAP_PER_THROTTLE = 30, 65             # kPa with the engine running
+MAP_STOPPED = 95                                # kPa: the air outside
+THROTTLE_CLOSED, THROTTLE_PER_PEDAL = 14, 80    # % of the throttle position sensor
 COOLANT_START = 72              # °C
 COOLANT_HOT = 90
 COOLANT_COLD = 25
@@ -126,13 +132,13 @@ class CarModel:
 
         # The turn: 100% steering gives 6 m/s² sideways; slowly, the wheel angle limits it.
         by_geometry = self.speed * steering * MAX_WHEEL_TAN / WHEELBASE
-        by_grip = steering * MAX_LATERAL / self.speed if self.speed > 0.5 else by_geometry
+        by_grip = steering * MAX_LATERAL / self.speed if self.speed > GRIP_MIN_SPEED else by_geometry
         self.yaw_rate = min(by_geometry, by_grip, key=abs)
         lateral = self.speed * self.yaw_rate
 
         # The body rolls with the lateral acceleration and dives when braking (positive pitch: nose down).
-        roll = self._roll + (ROLL_PER_LATERAL * lateral - self._roll) * min(1.0, dt / BODY_RESPONSE_S)
-        pitch = self._pitch + (-PITCH_PER_ACCEL * self.accel - self._pitch) * min(1.0, dt / BODY_RESPONSE_S)
+        roll = _approach(self._roll, ROLL_PER_LATERAL * lateral, dt / BODY_RESPONSE_S)
+        pitch = _approach(self._pitch, -PITCH_PER_ACCEL * self.accel, dt / BODY_RESPONSE_S)
         roll_rate, pitch_rate = (roll - self._roll) / dt, (pitch - self._pitch) / dt
         self._roll, self._pitch = roll, pitch
 
@@ -149,13 +155,13 @@ class CarModel:
         """The 8 PIDs as the car's ECUs see them now, by their names in DECODIFICADOR.md §3.3."""
         throttle = _clamp(self.throttle, 0, 1)
         return {
-            "load": 18 + 70 * throttle if self.running else 0.0,
+            "load": LOAD_IDLE + LOAD_PER_THROTTLE * throttle if self.running else 0.0,
             "coolant": self.coolant,
-            "map": 30 + 65 * throttle if self.running else 95.0,
+            "map": MAP_IDLE + MAP_PER_THROTTLE * throttle if self.running else MAP_STOPPED,
             "rpm": self.rpm,
             "speed": self.speed_kmh,
             "iat": IAT,
-            "throttle": 14 + 80 * throttle,
+            "throttle": THROTTLE_CLOSED + THROTTLE_PER_PEDAL * throttle,
             "voltage": VOLTAGE_RUNNING if self.running else VOLTAGE_IGNITION,
         }
 
@@ -167,11 +173,16 @@ class CarModel:
             self.rpm = max(0.0, self.rpm - ENGINE_STOP_RPM_S * dt)
         else:
             self.gear = sum(kmh >= lowest for lowest in GEAR_KMH)
-            target = max(IDLE_RPM + (LAUNCH_RPM * throttle if kmh < 3 else 0),
+            target = max(IDLE_RPM + (LAUNCH_RPM * throttle if kmh < LAUNCH_KMH else 0),
                          kmh * RPM_PER_KMH[self.gear - 1] + THROTTLE_RPM * throttle)
-            self.rpm += (target - self.rpm) * min(1.0, RPM_RESPONSE * dt)
+            self.rpm = _approach(self.rpm, target, RPM_RESPONSE * dt)
         target, seconds = (COOLANT_HOT, WARM_UP_S) if self.running else (COOLANT_COLD, COOL_DOWN_S)
-        self.coolant += (target - self.coolant) * dt / seconds
+        self.coolant = _approach(self.coolant, target, dt / seconds)
+
+
+def _approach(value, target, fraction):
+    """One step of a first-order lag: value moves this fraction of the way to target."""
+    return value + (target - value) * min(1.0, fraction)
 
 
 def _clamp(value, low, high):

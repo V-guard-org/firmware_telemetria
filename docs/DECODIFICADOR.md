@@ -199,6 +199,8 @@ O instante de chegada dos bytes é lido no início de cada `feed()` e vale para 
 - **Arredondamento.** Só `load` e `throttle` são arredondados, porque a resolução é de 0,4%: sem isso, `A = 77` daria `30.19607843137255` no JSON enviado ao backend. As outras fórmulas já dão números curtos.
 - **PID ausente.** Um PID que o carro não suporta, ou que nunca respondeu, não aparece. Nunca há `None`.
 - **Valor pulado.** Um PID sem fórmula na tabela é pulado pelo `tam` e contado em `skipped_values`, assim como um valor com menos bytes do que a fórmula usa. Para incluir um PID novo, basta acrescentar uma linha na tabela do código e subir a `VERSION`.
+  - O valor pulado conta mesmo numa amostra descartada por falta de sincronização.
+  - Se nenhum valor sobrar, a mensagem não vira amostra, porque o `{}` quer dizer que o OBD parou (§3.4).
 
 Exemplo, com a mensagem OBD do [`PROTOCOLO.md` §8](PROTOCOLO.md):
 

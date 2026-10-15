@@ -3,6 +3,7 @@
 import json
 import logging
 import random
+import statistics
 import unittest
 
 import esp32_decoder
@@ -404,6 +405,17 @@ class Samples(unittest.TestCase):
                                   "age_ms": {"speed": 50, "throttle": 50}})
         self.assertEqual(self.decoder.stats()["counters"]["skipped_values"], 2)
 
+    def test_an_obd_message_with_no_value_left_gives_no_sample(self):
+        self.sync()
+        self.assertEqual(self.decoder.feed(obd([(0x10, 50, "01 F4")])), [])    # {} means "stopped" (§3.4)
+        counters = self.decoder.stats()["counters"]
+        self.assertEqual([counters["obd"], counters["skipped_values"]], [0, 1])
+
+    def test_skipped_values_count_even_in_a_sample_dropped_as_unsynced(self):
+        self.decoder.feed(obd([(0x10, 50, "01 F4"), (0x0D, 50, "3C")]))
+        counters = self.decoder.stats()["counters"]
+        self.assertEqual([counters["unsynced"], counters["skipped_values"]], [1, 1])
+
     def test_imu_pong_or_obd_too_short_for_its_fields_is_corrupt(self):
         self.sync()
         whole_value = obd([(0x0D, 50, "3C")])
@@ -494,7 +506,7 @@ class Pongs(unittest.TestCase):
         self.assertEqual(self.decoder.stats()["counters"]["slow_pongs"], 1)
 
 
-class Esp32Clock:
+class Esp32Peer:
     """The ESP32 at the other end of the line, with its own clock, which may run fast."""
 
     def __init__(self, clock, decoder, drift_ppm=0.0):
@@ -546,11 +558,11 @@ class TimeSync(unittest.TestCase):
         return self.decoder.stats()["sync"]
 
     def test_no_pair_yet(self):
-        Esp32Clock(self.clock, self.decoder)
+        Esp32Peer(self.clock, self.decoder)
         self.assertEqual(self.sync_stats(), {"pairs": 0, "rtt_ms": None, "age_s": None, "drift_ppm": None})
 
     def test_keeps_the_fastest_pair_of_each_10_s(self):
-        esp32 = Esp32Clock(self.clock, self.decoder)        # t_us 5 s: three PINGs in the same 10 s
+        esp32 = Esp32Peer(self.clock, self.decoder)        # t_us 5 s: three PINGs in the same 10 s
         esp32.answer_ping(0.001, 0.015)                     # off by 7 ms
         self.clock.advance(1.0 - 0.016)
         esp32.answer_ping(0.002, 0.002)                     # exact
@@ -561,7 +573,7 @@ class TimeSync(unittest.TestCase):
         self.assertEqual(self.sync_stats(), {"pairs": 1, "rtt_ms": 16.0, "age_s": 0.5, "drift_ppm": None})
 
     def test_the_line_corrects_the_drift_of_the_esp32_crystal(self):
-        esp32 = Esp32Clock(self.clock, self.decoder, drift_ppm=200)
+        esp32 = Esp32Peer(self.clock, self.decoder, drift_ppm=200)
         esp32.run(20)
         self.assertIsNone(self.sync_stats()["drift_ppm"])      # pairs span under 30 s: offset only
         esp32.run(160)
@@ -582,16 +594,19 @@ class TimeSync(unittest.TestCase):
             up = rtt * rng.random()                 # all on the way out, all on the way back, or between
             return up, rtt - up
 
-        esp32 = Esp32Clock(self.clock, self.decoder, drift_ppm=-40)
+        esp32 = Esp32Peer(self.clock, self.decoder, drift_ppm=-40)
         errors = []
         for _ in range(300):
             esp32.run(1, delays)
             errors.append(esp32.error_ms())
         self.assertLessEqual(max(map(abs, errors)), max(esp32.rtts) / 2 * 1000)
+        # The fastest pair of each 10 s keeps it much tighter: about 0.6 ms, against 2.4 ms
+        # if each PONG simply replaced the last (10 seeds measured).
+        self.assertLess(statistics.mean(map(abs, errors)), 1.2)
         self.assertGreater(self.decoder.stats()["counters"]["slow_pongs"], 0)
 
     def test_the_wall_clock_is_read_at_each_delivery(self):
-        esp32 = Esp32Clock(self.clock, self.decoder)
+        esp32 = Esp32Peer(self.clock, self.decoder)
         esp32.run(1)
         self.clock.epoch += 3600.25                 # chrony steps the Pi's clock when the GPS locks
         self.assertAlmostEqual(esp32.error_ms(), 0.0, delta=0.001)
@@ -634,7 +649,7 @@ class Garbage(unittest.TestCase):
             self.decoder.stats()
 
     def test_random_samples_of_a_synced_boot_come_out_as_plain_json(self):
-        esp32 = Esp32Clock(self.clock, self.decoder)
+        esp32 = Esp32Peer(self.clock, self.decoder)
         esp32.run(1)
         rng = random.Random(17)
         samples = []

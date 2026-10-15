@@ -248,8 +248,8 @@ O decodificador entrega `(source, ts, {})` uma vez quando a fonte para:
 
 | Contador | O que conta |
 |---|---|
-| `lost` | Mensagens perdidas no cabo: lacunas de `seq` dentro do mesmo boot. Depois de 3 s de silêncio, a sequência recomeça sem contar a lacuna. |
-| `corrupt` | Mensagens rejeitadas: COBS inválido, menos de 7 bytes, CRC errado ou mais de 258 bytes sem um `0x00` |
+| `lost` | Mensagens perdidas no cabo: lacunas de `seq` dentro do mesmo boot. Depois de 3 s de silêncio, a sequência recomeça sem contar a lacuna. Um `seq` repetido ou que volta também recomeça a sequência, sem somar. |
+| `corrupt` | Mensagens rejeitadas: COBS inválido, menos de 7 bytes, CRC errado, mais de 255 bytes depois de desfazer o COBS ou mais de 258 bytes sem um `0x00`. Também um STATUS ou um LOG com o CRC certo, mas curto demais para os seus campos; o cabeçalho desse ainda conta para o `boot` e a sequência. |
 | `unsynced` | Amostras descartadas por boot sem STATUS, sem sincronização ou com versão desconhecida |
 | `unknown` | Mensagens de tipo desconhecido |
 | `skipped_values` | Valores OBD pulados (§3.3) |

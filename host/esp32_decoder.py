@@ -24,6 +24,7 @@ PING = 0x81
 
 _HEADER = struct.Struct("<BHH")     # type, boot, seq
 _CRC_SIZE = 2
+_MAX_MESSAGE = 255                  # header, body and CRC, before COBS
 _MAX_BUFFER = 258                   # 255 bytes become at most 257 after COBS, plus the 0x00
 
 # STATUS up to heap_min; the firmware text takes the rest (PROTOCOLO.md §3.1)
@@ -127,7 +128,7 @@ class Decoder:
         self._buffer = rest
         for frame in frames:
             if frame:                   # back-to-back zeros carry no message
-                self._accept(frame, now)
+                self._handle_frame(frame, now)
         return []
 
     def data_to_send(self):
@@ -136,7 +137,9 @@ class Decoder:
         out = bytearray()
         if self._next_ping_at is None or now >= self._next_ping_at:
             out += self._message(PING)
-            self._next_ping_at = now + PING_INTERVAL_S
+            self._next_ping_at = (self._next_ping_at or now) + PING_INTERVAL_S
+            if self._next_ping_at <= now:   # the reader stalled; no burst to catch up
+                self._next_ping_at = now + PING_INTERVAL_S
         return bytes(out)
 
     def stats(self):
@@ -150,29 +153,32 @@ class Decoder:
             "esp32": copy.deepcopy(self._esp32),
         }
 
-    def _accept(self, frame, now):
+    def _handle_frame(self, frame, now):
         try:
             data = cobs_decode(frame)
         except ValueError:
             data = b""
         payload, crc = data[:-_CRC_SIZE], data[-_CRC_SIZE:]
-        if len(payload) < _HEADER.size or int.from_bytes(crc, "little") != crc16(payload):
+        if (len(payload) < _HEADER.size or len(data) > _MAX_MESSAGE
+                or int.from_bytes(crc, "little") != crc16(payload)):
             self._counters["corrupt"] += 1
             return
         msg_type, boot, seq = _HEADER.unpack_from(payload)
         body = payload[_HEADER.size:]
         silent = self._last_valid_at is None or now - self._last_valid_at >= LINK_TIMEOUT_S
+        step = None if self._last_seq is None else (seq - self._last_seq) & 0xFFFF
         if boot != self._boot:
             self._boot = boot
             self._counters["boots"] += 1
             self._esp32 = None
-        elif not silent:
-            self._counters["lost"] += (seq - self._last_seq - 1) & 0xFFFF
+        elif not silent and 0 < step < 0x8000:
+            # A repeated or earlier seq is a restart, not 65535 lost messages.
+            self._counters["lost"] += step - 1
         self._last_seq = seq
         self._last_valid_at = now
 
         if msg_type in _MIN_BODY and len(body) < _MIN_BODY[msg_type]:
-            # The CRC matched, so this came whole from a sender that broke the layout.
+            # The CRC matched, so the header counted above; only the body is unreadable.
             self._counters["corrupt"] += 1
         elif msg_type == STATUS:
             self._esp32 = _parse_status(body)
@@ -196,13 +202,13 @@ def _parse_status(body):
     return {
         "protocol": protocol,
         "uptime_s": t_us / 1e6,
-        "platform": _name(_PLATFORMS, platform),
+        "platform": _code_name(_PLATFORMS, platform),
         "imu_simulated": bool(sources & 0x01),
-        "reset_reason": _name(_RESET_REASONS, reset),
+        "reset_reason": _code_name(_RESET_REASONS, reset),
         "imu_rate": imu_rate,
         "obd_rate": obd_rate,
-        "imu_state": _name(_IMU_STATES, imu_state),
-        "obd_state": _name(_OBD_STATES, obd_state),
+        "imu_state": _code_name(_IMU_STATES, imu_state),
+        "obd_state": _code_name(_OBD_STATES, obd_state),
         "supported_pids": [pid for pid in range(0x01, 0x61)
                            if pids[(pid - 1) // 8] & (0x80 >> ((pid - 1) % 8))],
         "counters": dict(zip(_ESP32_COUNTERS, counters)),
@@ -211,5 +217,5 @@ def _parse_status(body):
     }
 
 
-def _name(names, code):
+def _code_name(names, code):
     return names[code] if code < len(names) else "unknown"

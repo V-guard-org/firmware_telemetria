@@ -81,6 +81,13 @@ class Pings(unittest.TestCase):
         self.assertEqual([data for data in sent if data], [ping(1), ping(2), ping(3)])
         self.assertEqual([i for i, data in enumerate(sent) if data], [9, 19, 29])
 
+    def test_pings_keep_to_whole_seconds_whatever_the_call_rhythm(self):
+        sent = 0
+        for _ in range(144):                # calls from 0 s to 10.01 s, every 70 ms
+            sent += bool(self.decoder.data_to_send())
+            self.clock.advance(0.07)
+        self.assertEqual(sent, 11)          # at 0 s and right after each of 1 s … 10 s
+
     def test_eighth_ping_is_the_protocol_example(self):
         for _ in range(7):
             self.decoder.data_to_send()
@@ -213,6 +220,11 @@ class BadBytes(unittest.TestCase):
         self.assertEqual(self.counters()["corrupt"], 1)
         self.assertIsNotNone(self.decoder.stats()["esp32"])
 
+    def test_a_message_over_255_bytes_is_corrupt_even_in_one_read(self):
+        self.decoder.feed(esp32_decoder.encode_message(0x01, 0xBEEF, 0, status_body(firmware=b"x" * 200)))
+        self.assertEqual(self.counters()["corrupt"], 1)
+        self.assertIsNone(self.decoder.stats()["esp32"])
+
     def test_unknown_type_is_counted_and_ignored(self):
         self.decoder.feed(esp32_decoder.encode_message(0x7E, 0xBEEF, 0, b"\x01\x02"))
         self.assertEqual(self.counters()["unknown"], 1)
@@ -224,6 +236,9 @@ class BadBytes(unittest.TestCase):
         self.decoder.feed(esp32_decoder.encode_message(0x05, 0xBEEF, 1, bytes(8)))
         self.assertEqual(self.counters()["corrupt"], 2)
         self.assertIsNone(self.decoder.stats()["esp32"])
+        # the CRC matched, so the header still counts: nothing was lost on the wire
+        self.decoder.feed(status(seq=2))
+        self.assertEqual(self.counters()["lost"], 0)
 
     def test_back_to_back_zeros_are_not_messages(self):
         self.decoder.feed(b"\x00\x00" + status() + b"\x00")
@@ -262,6 +277,10 @@ class Sequence(unittest.TestCase):
         self.clock.advance(3.0)
         self.feed_seqs([200, 201])
         self.assertEqual(self.counters()["lost"], 0)
+
+    def test_a_repeated_or_earlier_seq_restarts_the_count_without_a_gap(self):
+        self.feed_seqs([5, 5, 6, 2, 3, 5])
+        self.assertEqual(self.counters()["lost"], 1)
 
     def test_short_silence_still_counts_the_gap(self):
         self.feed_seqs([10, 11])

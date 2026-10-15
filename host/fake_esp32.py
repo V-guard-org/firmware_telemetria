@@ -19,8 +19,7 @@ import termios
 import time
 import tty
 
-import esp32_decoder
-from esp32_decoder import LOG, STATUS, encode_message
+from esp32_decoder import LOG, STATUS, VERSION, encode_message
 
 DEFAULT_PATH = "/tmp/vguard-esp32"
 
@@ -36,7 +35,7 @@ _SOURCE_IMU_SIMULATED = 0x01
 _RESET_POWER_ON = 1
 _IMU_OK = 0
 _OBD_WAITING_PI = 0
-_ESP32_COUNTERS = 9
+_ESP32_COUNTER_COUNT = 9
 
 _LOG = struct.Struct("<QB")         # t_us, level; the text follows
 _LOG_WARNING = 2
@@ -68,7 +67,9 @@ class FakeEsp32:
         out = bytearray()
         if now >= self._next_status_at:
             out += self._message(STATUS, self._status_body(t_us))
-            self._next_status_at = now + STATUS_INTERVAL_S
+            self._next_status_at += STATUS_INTERVAL_S
+            if self._next_status_at <= now:     # the program stalled; no burst to catch up
+                self._next_status_at = now + STATUS_INTERVAL_S
         for text in self._logs:
             out += self._message(LOG, _LOG.pack(t_us, _LOG_WARNING) + text.encode())
         self._logs.clear()
@@ -79,9 +80,9 @@ class FakeEsp32:
             PROTOCOL_VERSION, t_us, _PLATFORM_NOTEBOOK, _SOURCE_IMU_SIMULATED, _RESET_POWER_ON,
             DEFAULT_IMU_RATE, DEFAULT_OBD_RATE, _IMU_OK, _OBD_WAITING_PI,
             bytes(12),                                  # no PID discovered
-            *[0] * _ESP32_COUNTERS,
+            *[0] * _ESP32_COUNTER_COUNT,
             0,                                          # heap_min: 0 off the ESP32
-        ) + f"fake-{esp32_decoder.VERSION}".encode()
+        ) + f"fake-{VERSION}".encode()
 
     def _message(self, msg_type, body):
         data = encode_message(msg_type, self.boot, self._seq, body)

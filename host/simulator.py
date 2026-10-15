@@ -66,9 +66,10 @@ def _one_of(name, value, accepted):
     return value
 
 
-# The manobras of SIMULADOR.md §3.4, by their names in the car model
-MANEUVERS = {"buraco": "pothole", "lombada": "speed_bump", "frenagem brusca": "hard_brake",
-             "curva esquerda": "left_turn", "curva direita": "right_turn", "troca de faixa": "lane_change"}
+# The manobras of SIMULADOR.md §3.4: the roteiro's words and the car model's names
+MANEUVER_COMMANDS = {"buraco": "pothole", "lombada": "speed_bump", "frenagem brusca": "hard_brake",
+                     "curva esquerda": "left_turn", "curva direita": "right_turn",
+                     "troca de faixa": "lane_change"}
 
 # Each command as the roteiro and the screen write it (SIMULADOR.md §6), and what it means
 _COMMANDS = (
@@ -78,7 +79,8 @@ _COMMANDS = (
         "throttle" if pedal == "acelerador" else "brake", (_percent(pedal, value),))),
     (r"volante ([+-]?\d+)%", lambda value: Command("steering", (_percent("volante", value, -100),))),
     (r"solta tudo", lambda: Command("release", ())),
-    ("(" + "|".join(MANEUVERS) + ")", lambda name: Command("maneuver", (MANEUVERS[name],))),
+    ("(" + "|".join(MANEUVER_COMMANDS) + ")",
+     lambda words: Command("maneuver", (MANEUVER_COMMANDS[words],))),
     (r"imu falha (liga|desliga)", lambda on: Command("imu_failing", (on == "liga",))),
     (r"imu sem-sinal (liga|desliga)", lambda on: Command("imu_silent", (on == "liga",))),
     (r"ruído (liga|desliga)", lambda on: Command("noise", (on == "liga",))),

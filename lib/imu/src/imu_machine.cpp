@@ -18,9 +18,15 @@ uint64_t next_due(uint64_t due_us, uint64_t period_us, uint64_t now_us) {
     return due_us > now_us ? due_us : now_us + period_us;
 }
 
+// Em unidades do cabo, travado em ±32767 (PROTOCOLO.md §3.2).
 int16_t to_wire(double value, double scale) {
-    const double scaled = value * scale;
-    return static_cast<int16_t>(std::lround(scaled > kWireMax ? kWireMax : scaled < -kWireMax ? -kWireMax : scaled));
+    double scaled = value * scale;
+    if (scaled > kWireMax) {
+        scaled = kWireMax;
+    } else if (scaled < -kWireMax) {
+        scaled = -kWireMax;
+    }
+    return static_cast<int16_t>(std::lround(scaled));
 }
 
 }  // namespace

@@ -30,7 +30,8 @@ private:
     ImuReading last_{};
     bool has_reading_ = false;
     bool failing_ = false;          // a marca de falha da última IMU_SIM
-    uint64_t last_message_us_ = 0;  // começa na partida
+    bool started_ = false;
+    uint64_t last_message_us_ = 0;  // até a 1ª IMU_SIM, a partida
 };
 
 }  // namespace vguard

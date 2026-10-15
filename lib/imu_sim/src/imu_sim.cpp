@@ -21,6 +21,11 @@ bool ImuSim::read(ImuReading& out, uint64_t t_us) {
 }
 
 bool ImuSim::restart(uint64_t t_us) {
+    if (!started_) {
+        // O 1º reinício é o da partida: o 1 s de espera conta dele, seja qual for o relógio.
+        started_ = true;
+        last_message_us_ = t_us;
+    }
     return !failing_ && !silent(t_us);
 }
 

@@ -85,7 +85,9 @@ static void test_values_beyond_the_wire_range_stay_at_32767() {
     h.start(0);
     h.run_until(40'000);
 
-    const ImuView s = imu_samples(link).at(0);
+    const auto samples = imu_samples(link);
+    TEST_ASSERT_EQUAL(1, samples.size());
+    const ImuView& s = samples[0];
     TEST_ASSERT_EQUAL(32767, s.mean[kAx]);
     TEST_ASSERT_EQUAL(-32767, s.peak[kAy]);
     TEST_ASSERT_EQUAL(32767, s.mean[kGx]);

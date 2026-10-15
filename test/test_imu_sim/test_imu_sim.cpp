@@ -124,7 +124,8 @@ static void test_more_than_1_s_without_imu_sim_fails_the_readings() {
 }
 
 static void test_at_start_it_waits_up_to_1_s_for_the_first_imu_sim() {
-    // No notebook, o simulador abre a porta alguns milissegundos depois da partida.
+    // No notebook, o simulador abre a porta alguns milissegundos depois da partida. A espera
+    // conta da partida, mesmo com o relógio longe de 0.
     FakeCan can;
     FakeLink link;
     ImuSim imu;
@@ -132,10 +133,11 @@ static void test_at_start_it_waits_up_to_1_s_for_the_first_imu_sim() {
     Harness h(can, link, imu, sys);
     h.core().register_dev_handler(ImuSim::kMessageType, imu);
 
-    h.start(0);
+    constexpr uint64_t kStart = 50'000'000;
+    h.start(kStart);
     TEST_ASSERT_EQUAL(0, h.last_status().imu_state);
-    send_every_10_ms(h, imu_sim(kStopped), 35'000, 1'000'000);
-    h.run_until(1'000'000);
+    send_every_10_ms(h, imu_sim(kStopped), kStart + 35'000, kStart + 1'000'000);
+    h.run_until(kStart + 1'000'000);
 
     TEST_ASSERT_EQUAL(0, h.last_status().imu_state);
     TEST_ASSERT_EQUAL(3, h.last_status().imu_failures);  // as leituras de 10, 20 e 30 ms
@@ -174,6 +176,26 @@ static void test_an_imu_sim_of_the_wrong_size_is_rejected() {
     TEST_ASSERT_EQUAL(1, h.last_status().rejected);
 }
 
+static void test_the_pi_messages_cannot_be_taken_by_a_handler() {
+    FakeCan can;
+    FakeLink link;
+    ImuSim imu;
+    FakeSystem sys;
+    Harness h(can, link, imu, sys);
+
+    TEST_ASSERT_FALSE(h.core().register_dev_handler(0x81, imu));  // PING
+    TEST_ASSERT_FALSE(h.core().register_dev_handler(0x82, imu));  // TAXAS
+    TEST_ASSERT_FALSE(h.core().register_dev_handler(0x02, imu));  // do sentido ESP32 → Pi
+    for (uint8_t type = 0x90; type < 0x90 + Core::kMaxDevHandlers; ++type) {
+        TEST_ASSERT_TRUE(h.core().register_dev_handler(type, imu));
+    }
+    TEST_ASSERT_FALSE(h.core().register_dev_handler(0xA0, imu));  // a tabela está cheia
+
+    h.start(0);
+    h.ping(5, 100'000);
+    TEST_ASSERT_EQUAL(1, link.messages_of(MessageType::kPong).size());
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_the_imu_sim_values_come_out_in_the_samples);
@@ -182,5 +204,6 @@ int main() {
     RUN_TEST(test_at_start_it_waits_up_to_1_s_for_the_first_imu_sim);
     RUN_TEST(test_without_any_imu_sim_it_stays_failed);
     RUN_TEST(test_an_imu_sim_of_the_wrong_size_is_rejected);
+    RUN_TEST(test_the_pi_messages_cannot_be_taken_by_a_handler);
     return UNITY_END();
 }

@@ -240,16 +240,17 @@ O decodificador entrega `(source, ts, {})` uma vez quando a fonte para:
 
 **`sync`:**
 - `pairs`: pares de horários guardados, no máximo 12 (§3.8);
-- `rtt_ms`: ida e volta do último par aceito;
-- `age_s`: segundos desde o último par aceito, ou `None` sem nenhum par;
-- `drift_ppm`: deriva do relógio do ESP32 estimada pela reta, ou `None` enquanto só o deslocamento é usado.
+- `rtt_ms`: ida e volta do último par aceito, com 2 casas, ou `None` sem nenhum par. "Aceito" é o par com ida e volta de até 20 ms, mesmo que não seja o mais rápido do seu intervalo;
+- `age_s`: segundos desde o último par aceito, com 1 casa, ou `None` sem nenhum par;
+- `drift_ppm`: deriva do relógio do ESP32 estimada pela reta, com 1 casa, ou `None` enquanto só o deslocamento é usado. Positiva quando o relógio do ESP32 adianta.
+- Num boot novo, o `sync` volta a `{"pairs": 0, "rtt_ms": None, "age_s": None, "drift_ppm": None}`.
 
 **Contadores do decodificador.** Somam desde a criação do `Decoder` e nunca zeram.
 
 | Contador | O que conta |
 |---|---|
 | `lost` | Mensagens perdidas no cabo: lacunas de `seq` dentro do mesmo boot. Depois de 3 s de silêncio, a sequência recomeça sem contar a lacuna. Um `seq` repetido ou que volta também recomeça a sequência, sem somar. |
-| `corrupt` | Mensagens rejeitadas: COBS inválido, menos de 7 bytes, CRC errado, mais de 255 bytes depois de desfazer o COBS ou mais de 258 bytes sem um `0x00`. Também um STATUS ou um LOG com o CRC certo, mas curto demais para os seus campos; o cabeçalho desse ainda conta para o `boot` e a sequência. |
+| `corrupt` | Mensagens rejeitadas: COBS inválido, menos de 7 bytes, CRC errado, mais de 255 bytes depois de desfazer o COBS ou mais de 258 bytes sem um `0x00`. Também uma mensagem com o CRC certo, mas curta demais para os seus campos, ou um OBD cujos valores passam do fim; o cabeçalho dela ainda conta para o `boot` e a sequência. |
 | `unsynced` | Amostras descartadas por boot sem STATUS, sem sincronização ou com versão desconhecida |
 | `unknown` | Mensagens de tipo desconhecido |
 | `skipped_values` | Valores OBD pulados (§3.3) |
@@ -312,10 +313,11 @@ Valores iniciais, em constantes no topo do arquivo. Não mudam por padrão: só 
 |---|---|---|
 | `PING_INTERVAL_S` | 1,0 | Intervalo entre PINGs |
 | `MAX_RTT_S` | 0,020 | Ida e volta máxima de um par válido; o erro do par fica em até 10 ms (D12) |
-| `BUCKET_S` | 10 | De cada intervalo de 10 s, só o par mais rápido é guardado |
+| `BUCKET_S` | 10 | De cada intervalo de 10 s, contado pelo `t_us` do ESP32, só o par mais rápido é guardado |
 | `BUCKETS` | 12 | Pares usados na reta, ou seja, os últimos 2 min |
 | `MIN_SPAN_S` | 30 | Com pares cobrindo menos que isso, só o deslocamento é usado |
 | `LINK_TIMEOUT_S` | 3,0 | Silêncio que conta como ESP32 mudo |
+| `PONG_WINDOW_S` | 3,0 | Um PONG só vale para um PING enviado há menos que isso (§3.7) |
 
 Como funciona:
 1. Cada PONG válido dá um par: o meio da ida e volta, `(t1 + t2)/2`, no relógio monotônico da Pi, e o `t_us` do PONG.
@@ -354,7 +356,7 @@ python3 host/fake_esp32.py [--path /tmp/vguard-esp32] [opções]
   - envia IMU na taxa pedida, 25/s por padrão;
   - envia OBD com os 8 PIDs, só com a Pi presente, como o firmware: cerca de 1,2 s depois do 1º PING, e nada depois de 3 s sem PING;
   - responde a cada PING com um PONG e aplica o TAXAS, contando em `rejeitadas` os valores fora da lista;
-  - envia um LOG de aviso ao iniciar.
+  - envia um LOG de aviso cada vez que a Pi aparece, no 1º PING depois de 3 s sem PING. Assim, o leitor que acabou de abrir a porta o vê; um LOG enviado só no início se perderia antes de qualquer leitor.
 - **Valores.** Seguem um percurso de 60 s em laço: parado, acelera até 60 km/h, anda e freia. Saem do modelo do carro do simulador (`host/car_model.py`, [`SIMULADOR.md` §3](SIMULADOR.md)), então a IMU e o OBD são coerentes.
 - **Opções para provocar cada caso:**
 

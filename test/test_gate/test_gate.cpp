@@ -116,7 +116,7 @@ static void test_a_mode_01_request_goes_out_while_the_transceiver_is_released() 
 // Parte 1: os quadros perigosos, um por um, com o transceptor liberado.
 static void test_each_dangerous_frame_is_blocked_counted_and_reported() {
     const CanFrame dangerous[] = {
-        frame(0x7DF, {0x01, 0x04, 0, 0, 0, 0, 0, 0}),            // modo 04: apaga os códigos de falha
+        frame(0x7DF, {0x01, 0x04, 0, 0, 0, 0, 0, 0}),            // modo 04: apaga as falhas
         frame(0x7E0, {0x04, 0x2E, 0xF1, 0x90, 0x01, 0, 0, 0}),   // 0x2E: escreve na central
         frame(0x7E0, {0x02, 0x27, 0x01, 0, 0, 0, 0, 0}),         // 0x27: acesso de segurança
         frame(0x7E0, {0x04, 0x31, 0x01, 0xFF, 0x00, 0, 0, 0}),   // 0x31: rotina

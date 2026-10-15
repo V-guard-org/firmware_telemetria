@@ -111,7 +111,7 @@ void Core::send_status(uint64_t t_us) {
     for (size_t i = 0; i < kCounterCount; ++i) {
         status.counters[i] = counters_[i];
     }
-    status.counters[kBlocked] = gate_.blocked();
+    status.counters[kBlocked] = gate_.blocked();  // quem conta os quadros barrados é o portão
     status.heap_min = system_.heap_min();
     status.firmware = firmware_;
     uint8_t body[kMaxBody];
@@ -126,12 +126,16 @@ void Core::send_log(LogLevel level, const char* text, uint64_t t_us) {
 // Um quadro fora da lista fechada, ou fora da liberação, que o portão barrou: só por defeito
 // no código (PLATAFORMA.md §3.2). Com o OBD (#25), ele também vai a BLOQUEADO.
 void Core::on_frame_blocked(const CanFrame& frame, bool released) {
+    // No máximo cerca de 105 bytes, sempre abaixo dos 200 do LOG.
     char text[kMaxLogText + 1];
-    int len = std::snprintf(text, sizeof(text), "closed list: blocked %s%s frame 0x%" PRIX32 " dlc %u%s:",
-                            frame.extended ? "29-bit" : "11-bit", frame.remote ? " remote" : "",
-                            frame.id, frame.dlc, released ? "" : ", transceiver silent");
-    for (uint8_t i = 0; i < frame.dlc && i < 8 && len > 0 && static_cast<size_t>(len) < sizeof(text); ++i) {
-        len += std::snprintf(text + len, sizeof(text) - len, " %02X", frame.data[i]);
+    size_t len = static_cast<size_t>(std::snprintf(
+        text, sizeof(text), "closed list: blocked %s%s frame 0x%" PRIX32 " dlc %u%s:",
+        frame.extended ? "29-bit" : "11-bit", frame.remote ? " remote" : "", frame.id, frame.dlc,
+        released ? "" : ", transceiver silent"));
+    const uint8_t bytes = frame.dlc < 8 ? frame.dlc : 8;
+    for (uint8_t i = 0; i < bytes; ++i) {
+        len += static_cast<size_t>(
+            std::snprintf(text + len, sizeof(text) - len, " %02X", frame.data[i]));
     }
     send_log(LogLevel::kError, text, now_us_);
 }

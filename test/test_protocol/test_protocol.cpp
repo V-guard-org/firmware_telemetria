@@ -73,7 +73,8 @@ static void test_ping_example_encodes_byte_by_byte() {
 
 static void test_log_body_has_t_us_level_and_text_cut_at_200_bytes() {
     // §3.5: t_us 2 000 000, nível 1 (erro), e o texto ocupa o resto.
-    const uint8_t expected[] = {0x80, 0x84, 0x1E, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 'a', 'b', 'c'};
+    const uint8_t expected[] = {0x80, 0x84, 0x1E, 0x00, 0x00, 0x00, 0x00, 0x00,  // t_us
+                                0x01, 'a', 'b', 'c'};
     uint8_t body[kMaxBody];
     const size_t len = build_log_body(2'000'000, LogLevel::kError, "abc", body);
     TEST_ASSERT_EQUAL(sizeof(expected), len);

@@ -262,8 +262,10 @@ static void test_a_platform_error_goes_out_as_a_log_with_its_instant() {
 
     const auto logs = link.messages_of(MessageType::kLog);
     TEST_ASSERT_EQUAL(1, logs.size());
-    const uint8_t expected[] = {0x90, 0xD0, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01,  // 250 000 µs, erro
-                                't',  'w',  'a',  'i',  ':',  ' ',  'b',  'u',  's',  '-', 'o', 'f', 'f'};
+    const uint8_t expected[] = {
+        0x90, 0xD0, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00,                    // t_us 250 000
+        0x01,                                                              // erro
+        't', 'w', 'a', 'i', ':', ' ', 'b', 'u', 's', '-', 'o', 'f', 'f'};
     TEST_ASSERT_EQUAL(sizeof(expected), logs[0].body.size());
     TEST_ASSERT_EQUAL_HEX8_ARRAY(expected, logs[0].body.data(), sizeof(expected));
     TEST_ASSERT_EQUAL(0, h.last_status().blocked);

@@ -18,7 +18,8 @@ O planejamento foi concluído em 13/10/2026. O desenvolvimento começa pela fase
 | Testes, ensaios e o que precisa passar em cada fase | [`docs/TESTES.md`](docs/TESTES.md) |
 | Bancada e fiação (peças, pinos do ESP32, as três placas, fios até a Pi) | [`docs/BANCADA.md`](docs/BANCADA.md) |
 | Resultados dos ensaios (um arquivo por ensaio) | `docs/ensaios/` |
-| Mapa de decisões em aberto | [issue #1](https://github.com/V-guard-org/firmware_telemetria/issues/1) (etiqueta `wayfinder:map`) |
+| Spec e tickets de implementação da fase 1 | [issue #15](https://github.com/V-guard-org/firmware_telemetria/issues/15), com os tickets #16 a #28 (etiqueta `ready-for-agent`) |
+| Mapa de decisões (fechado em 15/10/2026) | [issue #1](https://github.com/V-guard-org/firmware_telemetria/issues/1) (etiqueta `wayfinder:map`) |
 | Resultados de pesquisas | ramos `research/*` |
 | Protótipos descartáveis | ramo `prototype/simulador` (#9) |
 | Histórico do planejamento (superado) | `docs/PLANO.md`, `docs/notas-equipe.md` |

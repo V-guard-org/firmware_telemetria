@@ -146,6 +146,12 @@ O byte 2, o PID, é livre, porque todo PID do modo 01 só lê. Os bytes 3 a 7 s�
 
 Cada quadro barrado precisa somar 1 em `bloqueadas`, sair num LOG de erro e levar o OBD a BLOQUEADO.
 
+*Emenda do #23 (15/10/2026):*
+- O teste fica em `test/test_gate/`, e o `pio test -e native` o roda, logo também o `./verifica.sh`.
+- Ele confere o que sai do portão: o quadro que chega ou não à porta, a conta de `bloqueadas` e o aviso ao núcleo, com o quadro.
+- O LOG de erro e o BLOQUEADO são a reação do núcleo a esse aviso. Nenhum teste do núcleo chega a ela, porque o núcleo nunca manda um quadro fora da lista. O caminho do LOG se prova pelo núcleo com um erro da plataforma.
+- O build de teste não otimiza o código. Por isso, o arquivo do teste liga a otimização para o próprio laço: sem ela, a varredura leva 3 s em vez de cerca de 1 s. O portão continua compilado como o resto.
+
 **Conferência externa.** A ECU simulada recebe todos os quadros que o ESP32 põe no barramento: no `vcan0` na fase 1 e no `can0` nas fases 2 e 4. Ela confere cada um com a mesma regra e conta os que estão fora da lista em `fora_da_lista`, que entra no resumo do simulador. **O valor deve ser 0 em todo ensaio.** É uma prova que não depende do contador do próprio firmware.
 
 ## 6. Ensaio de 2 h (D16)

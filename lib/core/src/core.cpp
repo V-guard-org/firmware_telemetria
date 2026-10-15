@@ -1,5 +1,7 @@
 #include "core.h"
 
+#include <cinttypes>
+#include <cstdio>
 #include <cstring>
 
 namespace vguard {
@@ -14,8 +16,9 @@ constexpr uint64_t kNever = UINT64_MAX;
 
 }  // namespace
 
-Core::Core(CanPort&, LinkPort& link, ImuPort& imu, SystemPort& system, const BootInfo& boot)
-    : link_(link),
+Core::Core(CanPort& can, LinkPort& link, ImuPort& imu, SystemPort& system, const BootInfo& boot)
+    : gate_(can, *this),
+      link_(link),
       imu_(imu),
       system_(system),
       imu_machine_(imu, kDefaultImuRate),
@@ -27,6 +30,7 @@ Core::Core(CanPort&, LinkPort& link, ImuPort& imu, SystemPort& system, const Boo
 }
 
 void Core::start(uint64_t now_us) {
+    now_us_ = now_us;
     imu_machine_.start(now_us);  // antes do STATUS, que já mostra o estado da IMU
     send_status(now_us);
     next_status_us_ = now_us + kStatusPeriodUs;
@@ -34,15 +38,22 @@ void Core::start(uint64_t now_us) {
 }
 
 // O OBD chega no ticket "OBD no vcan0: o caminho feliz" (#25).
-void Core::on_can_frame(const CanFrame&, uint64_t) {}
-void Core::on_can_tx_result(TxResult, uint64_t) {}
-void Core::on_can_bus_state(BusState, uint64_t) {}
+void Core::on_can_frame(const CanFrame&, uint64_t t_us) { now_us_ = t_us; }
+void Core::on_can_tx_result(TxResult, uint64_t t_us) { now_us_ = t_us; }
+void Core::on_can_bus_state(BusState, uint64_t t_us) { now_us_ = t_us; }
 
-// A 2ª entrada de bytes e os LOGs chegam no ticket da fila de saída, TAXAS e LOG (#22).
-void Core::on_dev_bytes(const uint8_t*, size_t, uint64_t) {}
-void Core::on_platform_log(LogLevel, const char*, uint64_t) {}
+// A 2ª entrada de bytes chega no ticket da fila de saída, TAXAS e LOG (#22).
+void Core::on_dev_bytes(const uint8_t*, size_t, uint64_t t_us) { now_us_ = t_us; }
+
+// O limite de 10 LOGs por segundo chega no #22.
+void Core::on_platform_log(LogLevel level, const char* text, uint64_t t_us) {
+    now_us_ = t_us;
+    send_log(level, text, t_us);
+    flush(t_us);
+}
 
 void Core::on_link_bytes(const uint8_t* data, size_t len, uint64_t t_us) {
+    now_us_ = t_us;
     // Uma mensagem leva o instante do pedaço que contém o seu 0x00 final (PLATAFORMA.md §3.3).
     for (size_t i = 0; i < len; ++i) {
         switch (link_reader_.push(data[i])) {
@@ -96,6 +107,7 @@ bool Core::deliver_dev_message(const Message& msg, uint64_t t_us) {
 }
 
 void Core::on_deadline(uint64_t now_us) {
+    now_us_ = now_us;
     ImuSampleBody sample;
     if (imu_machine_.on_deadline(now_us, sample)) {
         uint8_t body[kMaxBody];
@@ -131,10 +143,33 @@ void Core::send_status(uint64_t t_us) {
     for (size_t i = 0; i < kCounterCount; ++i) {
         status.counters[i] = counters_[i];
     }
+    status.counters[kBlocked] = gate_.blocked();  // quem conta os quadros barrados é o portão
     status.heap_min = system_.heap_min();
     status.firmware = firmware_;
     uint8_t body[kMaxBody];
     send(MessageType::kStatus, body, build_status_body(status, body));
+}
+
+void Core::send_log(LogLevel level, const char* text, uint64_t t_us) {
+    uint8_t body[kMaxBody];
+    send(MessageType::kLog, body, build_log_body(t_us, level, text, body));
+}
+
+// Um quadro fora da lista fechada, ou fora da liberação, que o portão barrou: só por defeito
+// no código (PLATAFORMA.md §3.2). Com o OBD (#25), ele também vai a BLOQUEADO.
+void Core::on_frame_blocked(const CanFrame& frame, bool released) {
+    // No máximo cerca de 105 bytes, sempre abaixo dos 200 do LOG.
+    char text[kMaxLogText + 1];
+    size_t len = static_cast<size_t>(std::snprintf(
+        text, sizeof(text), "closed list: blocked %s%s frame 0x%" PRIX32 " dlc %u%s:",
+        frame.extended ? "29-bit" : "11-bit", frame.remote ? " remote" : "", frame.id, frame.dlc,
+        released ? "" : ", transceiver silent"));
+    const uint8_t bytes = frame.dlc < 8 ? frame.dlc : 8;
+    for (uint8_t i = 0; i < bytes; ++i) {
+        len += static_cast<size_t>(
+            std::snprintf(text + len, sizeof(text) - len, " %02X", frame.data[i]));
+    }
+    send_log(LogLevel::kError, text, now_us_);
 }
 
 void Core::send(MessageType type, const uint8_t* body, size_t len) {

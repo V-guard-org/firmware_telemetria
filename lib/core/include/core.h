@@ -6,13 +6,12 @@
 #include <cstddef>
 #include <cstdint>
 
+#include "closed_list_gate.h"
 #include "imu_machine.h"
 #include "ports.h"
 #include "protocol.h"
 
 namespace vguard {
-
-enum class LogLevel : uint8_t { kError = 1, kWarning = 2 };  // o nível da mensagem LOG
 
 // Quem recebe uma mensagem de desenvolvimento, como a IMU simulada recebe a IMU_SIM
 // (docs/PLATAFORMA.md §5). O núcleo não conhece a simulação: só entrega o corpo.
@@ -33,7 +32,7 @@ struct BootInfo {
     const char* firmware;      // versão do firmware; o núcleo guarda até 32 bytes
 };
 
-class Core {
+class Core : private GateListener {
 public:
     Core(CanPort& can, LinkPort& link, ImuPort& imu, SystemPort& system, const BootInfo& boot);
     Core(const Core&) = delete;
@@ -64,7 +63,10 @@ private:
     void send_status(uint64_t t_us);
     void send(MessageType type, const uint8_t* body, size_t len);
     void flush(uint64_t now_us);
+    void send_log(LogLevel level, const char* text, uint64_t t_us);
+    void on_frame_blocked(const CanFrame& frame, bool released) override;
 
+    ClosedListGate gate_;  // o OBD (#25) recebe o portão, nunca a porta CAN
     LinkPort& link_;
     ImuPort& imu_;
     SystemPort& system_;
@@ -81,6 +83,7 @@ private:
     uint32_t counters_[kCounterCount] = {};
     uint64_t next_status_us_ = 0;
     uint64_t retry_write_us_ = UINT64_MAX;  // só enquanto a UART recusa a fila
+    uint64_t now_us_ = 0;                   // o instante da chamada em curso
 
     struct DevRegistration {
         uint8_t type;

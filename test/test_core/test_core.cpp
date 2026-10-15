@@ -248,6 +248,30 @@ static void test_wrong_crc_and_unknown_types_count_as_rejected() {
     TEST_ASSERT_EQUAL(1, link.messages_of(MessageType::kPong).size());
 }
 
+// O caminho do LOG (PROTOCOLO.md §3.5), o mesmo do LOG de erro de um quadro barrado pelo
+// portão. O limite de 10 por segundo chega no #22.
+static void test_a_platform_error_goes_out_as_a_log_with_its_instant() {
+    FakeCan can;
+    FakeLink link;
+    FakeImu imu;
+    FakeSystem sys;
+    Harness h(can, link, imu, sys);
+    h.start(0);
+    h.run_until(250'000);
+
+    h.core().on_platform_log(LogLevel::kError, "twai: bus-off", 250'000);
+
+    const auto logs = link.messages_of(MessageType::kLog);
+    TEST_ASSERT_EQUAL(1, logs.size());
+    const uint8_t expected[] = {
+        0x90, 0xD0, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00,                    // t_us 250 000
+        0x01,                                                              // erro
+        't', 'w', 'a', 'i', ':', ' ', 'b', 'u', 's', '-', 'o', 'f', 'f'};
+    TEST_ASSERT_EQUAL(sizeof(expected), logs[0].body.size());
+    TEST_ASSERT_EQUAL_HEX8_ARRAY(expected, logs[0].body.data(), sizeof(expected));
+    TEST_ASSERT_EQUAL(0, h.last_status().blocked);
+}
+
 static void test_core_never_allocates_memory() {
     FakeCan can;
     FakeLink link;
@@ -277,6 +301,7 @@ int main() {
     RUN_TEST(test_output_held_by_a_full_uart_is_retried_within_10_ms);
     RUN_TEST(test_full_queue_drops_the_oldest_status_without_spending_seq);
     RUN_TEST(test_wrong_crc_and_unknown_types_count_as_rejected);
+    RUN_TEST(test_a_platform_error_goes_out_as_a_log_with_its_instant);
     RUN_TEST(test_core_never_allocates_memory);
     return UNITY_END();
 }

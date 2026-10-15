@@ -62,4 +62,14 @@ size_t build_obd_body(uint64_t t_us, const ObdValue* values, size_t n, uint8_t* 
     return w.size();
 }
 
+size_t build_log_body(uint64_t t_us, LogLevel level, const char* text, uint8_t* out) {
+    ByteWriter w(out);
+    w.u64(t_us);
+    w.u8(static_cast<uint8_t>(level));
+    for (size_t i = 0; i < kMaxLogText && text[i] != '\0'; ++i) {
+        w.u8(static_cast<uint8_t>(text[i]));
+    }
+    return w.size();
+}
+
 }  // namespace vguard

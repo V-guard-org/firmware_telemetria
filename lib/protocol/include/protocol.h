@@ -106,6 +106,12 @@ struct ObdValue {
 // OBD (§3.3): values já em ordem crescente de PID; n vai até 8 (D6).
 size_t build_obd_body(uint64_t t_us, const ObdValue* values, size_t n, uint8_t* out);
 
+// LOG (§3.5): o instante, o nível e o texto UTF-8, cortado em kMaxLogText bytes.
+enum class LogLevel : uint8_t { kError = 1, kWarning = 2 };
+constexpr size_t kMaxLogText = 200;
+
+size_t build_log_body(uint64_t t_us, LogLevel level, const char* text, uint8_t* out);
+
 // Escreve em out os bytes do cabo, COBS(cabeçalho | corpo | CRC16) seguido de 0x00, e
 // devolve quantos são. out precisa de kMaxWire bytes; body_len vai até kMaxBody.
 size_t encode_message(MessageType type, uint16_t boot, uint16_t seq, const uint8_t* body,

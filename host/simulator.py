@@ -66,6 +66,10 @@ def _one_of(name, value, accepted):
     return value
 
 
+# The manobras of SIMULADOR.md §3.4, by their names in the car model
+MANEUVERS = {"buraco": "pothole", "lombada": "speed_bump", "frenagem brusca": "hard_brake",
+             "curva esquerda": "left_turn", "curva direita": "right_turn", "troca de faixa": "lane_change"}
+
 # Each command as the roteiro and the screen write it (SIMULADOR.md §6), and what it means
 _COMMANDS = (
     (r"ignição (liga|desliga)", lambda on: Command("ignition", (on == "liga",))),
@@ -74,6 +78,10 @@ _COMMANDS = (
         "throttle" if pedal == "acelerador" else "brake", (_percent(pedal, value),))),
     (r"volante ([+-]?\d+)%", lambda value: Command("steering", (_percent("volante", value, -100),))),
     (r"solta tudo", lambda: Command("release", ())),
+    ("(" + "|".join(MANEUVERS) + ")", lambda name: Command("maneuver", (MANEUVERS[name],))),
+    (r"imu falha (liga|desliga)", lambda on: Command("imu_failing", (on == "liga",))),
+    (r"imu sem-sinal (liga|desliga)", lambda on: Command("imu_silent", (on == "liga",))),
+    (r"ruído (liga|desliga)", lambda on: Command("noise", (on == "liga",))),
     (r"pi ping (liga|desliga)", lambda on: Command("ping", (on == "liga",))),
     (r"reinicia esp32", lambda: Command("restart", ())),
     (r"confere obd (\S+)", lambda state: Command(
@@ -149,6 +157,7 @@ class Simulator:
         self.decoder = Decoder()
         self.samples = dict.fromkeys(SOURCES, 0)
         self.empty = dict.fromkeys(SOURCES, 0)     # the {} of each source since the start
+        self.last_samples = dict.fromkeys(SOURCES)  # the last one with values, as update() gets it
         self.checks_passed = 0
         self.failed_checks = []
         self.error = None
@@ -162,6 +171,8 @@ class Simulator:
         self._tick_count = 0
         self._pinging = True
         self._imu_seq = 0
+        self._imu_failing = False       # the IMU_SIM goes with its failure mark
+        self._imu_silent = False        # "Parar a 0x83" (§4)
         self._ended = False
         self._stopping = False
         self._last_status = None
@@ -222,6 +233,14 @@ class Simulator:
             self.car.steering = args[0]
         elif name == "release":
             self.car.throttle = self.car.brake = self.car.steering = 0.0
+        elif name == "maneuver":
+            self.car.maneuver(args[0])
+        elif name == "imu_failing":
+            self._imu_failing = args[0]
+        elif name == "imu_silent":
+            self._imu_silent = args[0]
+        elif name == "noise":
+            self.car.noise = args[0]
         elif name == "ping":
             self._pinging = args[0]
         elif name == "restart":
@@ -237,6 +256,7 @@ class Simulator:
             "duration_s": self._tick_count / TICKS_PER_S,
             "samples": dict(self.samples),
             "empty": dict(self.empty),
+            "last_samples": dict(self.last_samples),
             "boots": stats["counters"]["boots"],
             "checks": {"passed": self.checks_passed, "failed": list(self.failed_checks)},
             "error": self.error,
@@ -272,10 +292,12 @@ class Simulator:
         if self._ended:
             return
         self.car.step(TICK_S)
-        reading = [max(-32767, min(32767, round(value * scale)))
-                   for value, scale in zip(self.car.imu, _IMU_SCALES)]
-        self._write(encode_message(IMU_SIM, 0, self._imu_seq, _IMU_SIM.pack(*reading, 0)))
-        self._imu_seq = (self._imu_seq + 1) & 0xFFFF
+        if not self._imu_silent:
+            reading = [max(-32767, min(32767, round(value * scale)))
+                       for value, scale in zip(self.car.imu, _IMU_SCALES)]
+            body = _IMU_SIM.pack(*reading, int(self._imu_failing))
+            self._write(encode_message(IMU_SIM, 0, self._imu_seq, body))
+            self._imu_seq = (self._imu_seq + 1) & 0xFFFF
         self._exchange(b"")
 
     def _exchange(self, data):
@@ -283,6 +305,7 @@ class Simulator:
         for source, _ts, values in self.decoder.feed(data):
             if values:
                 self.samples[source] += 1
+                self.last_samples[source] = values
             else:
                 self.empty[source] += 1
                 self._record(f"amostra vazia: {source}")

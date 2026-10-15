@@ -99,7 +99,7 @@ public:
     uint64_t next_deadline_us() const;
 
     // Mensagens de desenvolvimento (0x80–0xFF que o núcleo não conhece), §5
-    void register_dev_handler(uint8_t type, DevMessageHandler& handler);
+    bool register_dev_handler(uint8_t type, DevMessageHandler& handler);
 };
 ```
 
@@ -180,6 +180,8 @@ O teste automático da lista fechada roda no portão. A plataforma não confere 
 
 O núcleo chama `read()` a cada 10 ms. Ele anota o instante de cada leitura, gira para o referencial do carro, calcula a média e o pico e segue a máquina da IMU ([`MAQUINAS-DE-ESTADO.md` §3](MAQUINAS-DE-ESTADO.md)).
 
+*Emenda do #21 (15/10/2026).* O `read()` e o `restart()` recebem o instante da chamada, como toda entrada do núcleo. A IMU real o ignora; a IMU simulada o usa para a regra de 1 s sem IMU_SIM (§5). Ela não tem como perguntar a hora: o código de `lib/` é portátil. A máquina da IMU e a média e o pico ficam em `lib/imu/` (`ImuMachine`).
+
 ### 3.5 Porta do sistema
 
 Tem uma única operação, `heap_min()`: a menor memória livre já registrada, que vai para o STATUS. No ESP32, é `esp_get_minimum_free_heap_size()`; no notebook, vale 0.
@@ -255,6 +257,11 @@ TEST_ASSERT_EQUAL(8, h.last_status().obd_state);        // BLOQUEADO
   - Com a marca de falha ligada, o `read()` falha. É assim que o simulador provoca uma falha da IMU.
   - Se passar mais de 1 s sem mensagem, o `read()` também falha. Depois de 10 falhas seguidas, a IMU entra em FALHA, como um sensor desligado.
 - **Como a `0x83` chega a ela.** O núcleo não conhece a simulação. Ele entrega as mensagens de desenvolvimento a quem se registrou com `register_dev_handler()`, e a IMU simulada se registra para a `0x83`. Sem ninguém registrado, a mensagem soma 1 em `rejeitadas`.
+- *Emendas do #21 (15/10/2026):*
+  - **O reinício** da IMU simulada dá certo enquanto chegam IMU_SIM sem a marca de falha, ou seja, quando a próxima leitura daria certo. Assim, com a marca ligada ou sem mensagens, ela fica em FALHA sem ir e voltar a cada reinício.
+  - **Na partida,** ela espera até 1 s pela 1ª IMU_SIM: o reinício da partida dá certo, e as leituras falham até a mensagem chegar. No notebook, o simulador abre a porta alguns milissegundos depois do firmware, então a IMU não passa por FALHA a cada boot. Sem nenhuma IMU_SIM, ela entra em FALHA depois de 10 leituras e fica lá.
+  - **Um corpo com tamanho diferente de 13 bytes** soma 1 em `rejeitadas`. Qualquer valor diferente de 0 na marca de falha conta como falha.
+  - **O registro** aceita só os tipos de `0x80` a `0xFF` que não são da Pi (PING e TAXAS), até 4 tipos, e devolve `false` se o tipo não serve.
 - **Fase 4 (ADR-0009).** Os fios da Pi ficam na UART2 (GPIO17 e GPIO16, [`BANCADA.md` §7](BANCADA.md)), e o simulador do PC manda a `0x83` pelo USB, que é a UART0.
   - Com a IMU simulada e a ligação com a Pi fora da UART0, uma tarefa a mais lê a UART0 e entrega os bytes ao núcleo por `on_dev_bytes()`.
   - O `on_dev_bytes()` remonta as mensagens como o `on_link_bytes()`, mas só entrega as de desenvolvimento aos registrados. As demais, como um PING, somam 1 em `rejeitadas`.

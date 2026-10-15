@@ -51,7 +51,7 @@ class NativeFirmwareWithDecoder(unittest.TestCase):
             ready, _, _ = select.select([self.fd], [], [], 0.1)
             data = os.read(self.fd, 4096) if ready else b""
             samples = [sample for _source, _ts, sample in self.decoder.feed(data) if sample]
-            self.assertEqual([], samples, "no IMU or OBD yet")
+            self.assertEqual([], samples, "no IMU_SIM, so no IMU samples, and no OBD yet")
             os.write(self.fd, self.decoder.data_to_send())
 
     def test_status_of_the_native_firmware_reaches_the_decoder(self):

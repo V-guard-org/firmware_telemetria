@@ -55,12 +55,37 @@ ACCEL_NOISE = 0.05              # m/s², standard deviation on each axis
 GYRO_NOISE = 0.3                # °/s
 ENGINE_VIBRATION = 0.12         # m/s² on az, at twice the engine's turning frequency
 
+# Manobras (§3.4). Braking, turns and the lane change take over a pedal or the wheel for a while;
+# then the driver's controls count again.
+HARD_BRAKE_S, HARD_BRAKE = 1.6, 0.9
+TURN_S, TURN_STEERING = 4.0, 0.6               # about 3.6 m/s² sideways
+LANE_CHANGE_S, LANE_CHANGE_STEERING = 3.0, 0.3  # a sine, about ±1.8 m/s²
+STEERING_RAMP = 0.15            # share of a turn spent turning the wheel in, and out
+# The pothole and the speed bump: Gaussian pulses (height, centre in s, width in s) added to az
+# and gy, first by the front axle and then by the rear one, with 70% of the force. The force
+# grows with the speed: base + gain per m/s, up to base + extra.
+JOLTS = {
+    "pothole": {"base": 0.5, "gain": 1 / 14, "extra": 1.0,  # up to about 25 m/s² in az
+                "az": ((-3.0, 0.02, 0.012), (10.5, 0.06, 0.014), (-3.0, 0.10, 0.020)),
+                "gy": ((12.0, 0.05, 0.020), (-8.0, 0.10, 0.030))},
+    "speed_bump": {"base": 0.6, "gain": 1 / 6, "extra": 1.2,
+                   "az": ((3.5, 0.15, 0.08), (-2.2, 0.38, 0.09)),
+                   "gy": ((-14.0, 0.10, 0.06), (14.0, 0.30, 0.07))},
+}
+REAR_AXLE_FORCE = 0.7
+JOLT_S = 0.8                    # how long each axle's pulses last
+SLOWEST_AXLE_SPEED = 1.5        # m/s: slower, the rear axle follows as if at this speed
+HELD_S = {"hard_brake": HARD_BRAKE_S, "left_turn": TURN_S, "right_turn": TURN_S,
+          "lane_change": LANE_CHANGE_S}
+MANEUVERS = (*JOLTS, *HELD_S)
+
 
 class CarModel:
     """One car, advanced in steps by step(dt).
 
     The driver sets throttle and brake (0 to 1), steering (−1 full right to +1 full left)
-    and ignition, and presses start(). The model starts with the engine idling.
+    and ignition, and presses start(). The model starts with the engine idling. A manobra,
+    started by maneuver(), takes over a control for a while or jolts the body.
     """
 
     def __init__(self, rng=None, noise=True):
@@ -82,6 +107,9 @@ class CarModel:
         self._roll = 0.0                    # °
         self._pitch = 0.0
         self._vibration_phase = 0.0
+        self._t = 0.0                       # s since the model started
+        self._maneuvers = []                # (name, when it started)
+        self._pedal = 0.0                   # the throttle the engine sees, after the manobras
         self.imu = (0.0, 0.0, G, 0.0, 0.0, 0.0)
 
     @property
@@ -102,6 +130,12 @@ class CarModel:
             self._crank_left = CRANK_S
             self._mute_left = ECUS_MUTE_S
 
+    def maneuver(self, name):
+        """Starts a manobra (§3.4), one of MANEUVERS."""
+        if name not in MANEUVERS:
+            raise ValueError(f"no such maneuver: {name}")
+        self._maneuvers.append((name, self._t))
+
     @property
     def ecus_answer(self):
         return self._ignition and self._mute_left <= 0
@@ -111,8 +145,12 @@ class CarModel:
         return self.speed * 3.6
 
     def step(self, dt):
-        throttle, brake = _clamp(self.throttle, 0, 1), _clamp(self.brake, 0, 1)
-        steering = _clamp(self.steering, -1, 1)
+        # A jolt lasts until the rear axle is past it, at most this long.
+        jolt_s = JOLT_S + WHEELBASE / SLOWEST_AXLE_SPEED
+        self._maneuvers = [(name, start) for name, start in self._maneuvers
+                           if self._t - start <= HELD_S.get(name, jolt_s)]
+        throttle, brake, steering = self._controls()
+        self._pedal = throttle
         if self._crank_left > 0:
             self._crank_left -= dt
             self.running = self._crank_left <= 0
@@ -149,11 +187,13 @@ class CarModel:
             self._vibration_phase += 2 * math.pi * (2 * self.rpm / 60) * dt
             if self.running:
                 reading[2] += ENGINE_VIBRATION * math.sin(self._vibration_phase)
+        self._jolt(reading)
         self.imu = tuple(reading)
+        self._t += dt
 
     def obd(self):
         """The 8 PIDs as the car's ECUs see them now, by their names in DECODIFICADOR.md §3.3."""
-        throttle = _clamp(self.throttle, 0, 1)
+        throttle = self._pedal
         return {
             "load": LOAD_IDLE + LOAD_PER_THROTTLE * throttle if self.running else 0.0,
             "coolant": self.coolant,
@@ -164,6 +204,39 @@ class CarModel:
             "throttle": THROTTLE_CLOSED + THROTTLE_PER_PEDAL * throttle,
             "voltage": VOLTAGE_RUNNING if self.running else VOLTAGE_IGNITION,
         }
+
+    def _controls(self):
+        """Throttle, brake and steering: the driver's, unless a manobra holds one of them."""
+        throttle, brake = _clamp(self.throttle, 0, 1), _clamp(self.brake, 0, 1)
+        steering = _clamp(self.steering, -1, 1)
+        for name, start in self._maneuvers:
+            if name not in HELD_S:
+                continue
+            u = (self._t - start) / HELD_S[name]        # 0 to 1 through the manobra
+            ramp = min(1.0, u / STEERING_RAMP, (1 - u) / STEERING_RAMP)
+            if name == "hard_brake":
+                throttle, brake = 0.0, max(brake, HARD_BRAKE)
+            elif name == "left_turn":
+                steering = TURN_STEERING * ramp
+            elif name == "right_turn":
+                steering = -TURN_STEERING * ramp
+            else:
+                steering = LANE_CHANGE_STEERING * math.sin(2 * math.pi * u)
+        return throttle, brake, steering
+
+    def _jolt(self, reading):
+        """Adds the potholes and speed bumps under way to az and gy."""
+        rear_delay = WHEELBASE / max(self.speed, SLOWEST_AXLE_SPEED)
+        for name, start in self._maneuvers:
+            if name not in JOLTS:
+                continue
+            jolt = JOLTS[name]
+            force = jolt["base"] + min(jolt["extra"], jolt["gain"] * self.speed)
+            for delay, share in ((0.0, 1.0), (rear_delay, REAR_AXLE_FORCE)):
+                d = self._t - start - delay
+                if 0 <= d <= JOLT_S:
+                    reading[2] += share * force * _pulses(jolt["az"], d)
+                    reading[4] += share * force * _pulses(jolt["gy"], d)
 
     def _step_engine(self, throttle, dt):
         kmh = self.speed_kmh
@@ -178,6 +251,11 @@ class CarModel:
             self.rpm = _approach(self.rpm, target, RPM_RESPONSE * dt)
         target, seconds = (COOLANT_HOT, WARM_UP_S) if self.running else (COOLANT_COLD, COOL_DOWN_S)
         self.coolant = _approach(self.coolant, target, dt / seconds)
+
+
+def _pulses(shape, t):
+    """A sum of Gaussian pulses, each (height, centre, width), at t seconds."""
+    return sum(height * math.exp(-((t - centre) / width) ** 2) for height, centre, width in shape)
 
 
 def _approach(value, target, fraction):

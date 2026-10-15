@@ -232,7 +232,7 @@ O programa termina com código de saída 1 se algum `confere` ou algum critério
   - 2 se nada rodou: uma opção errada, ou uma linha do roteiro que o programa não entende.
 - **O firmware filho** roda numa sessão própria: um Ctrl+C para o simulador, e o simulador para o firmware. O Ctrl+C e o SIGTERM só marcam o fim, que vem no tique seguinte; um 2º sinal não interrompe a parada do firmware. Para reiniciar, o simulador fecha a porta, manda SIGTERM ao firmware (SIGKILL depois de 2 s), apaga um atalho que tenha sobrado, inicia o firmware de novo, espera o atalho novo e reabre a porta. A porta é aberta com `TCSANOW`, e não com o `TCSAFLUSH` do `tty.setraw()`, para não perder o STATUS do boot.
 - **Até a tela (#27),** o `--sem-tela` é obrigatório. Um roteiro com `reinicia esp32` pede `--firmware`, até existir o pulso no RTS da fase 2.
-- **Até a IMU simulada (#21),** o firmware nativo soma cada IMU_SIM em `rejeitadas` ([`PROTOCOLO.md` §4.3](PROTOCOLO.md)), cerca de 100 por segundo.
+- *Emenda do #21.* O resumo traz também a última amostra de cada fonte que tinha valores (`last_samples`), como o `update()` a recebe. É o que mostra, sem a tela, que a IMU parada chega com `az` ≈ 9,81.
 
 Com `--gravar sessao.jsonl`, com ou sem tela, o programa grava uma linha por ação, por amostra entregue e por STATUS, e o estado do modelo 10 vezes por segundo.
 

@@ -58,11 +58,13 @@ struct ImuReading {
     float gyro[3];   // °/s
 };
 
+// O núcleo passa o instante de cada chamada. A IMU real o ignora; a IMU simulada o usa
+// para a regra de 1 s sem IMU_SIM (§5).
 class ImuPort {
 public:
-    virtual bool read(ImuReading& out) = 0;  // false se a leitura falhou
-    virtual bool restart() = 0;              // reinicia o sensor; diz se deu certo
-    virtual bool simulated() const = 0;      // bit 0 de fontes no STATUS
+    virtual bool read(ImuReading& out, uint64_t t_us) = 0;  // false se a leitura falhou
+    virtual bool restart(uint64_t t_us) = 0;                // reinicia o sensor; diz se deu certo
+    virtual bool simulated() const = 0;                     // bit 0 de fontes no STATUS
 
 protected:
     ~ImuPort() = default;

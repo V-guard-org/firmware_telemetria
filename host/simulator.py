@@ -39,7 +39,7 @@ _IMU_SIM = struct.Struct("<6hB")    # ax ay az, gx gy gz, falha (PROTOCOLO.md §
 _IMU_SCALES = (100, 100, 100, 10, 10, 10)   # 0.01 m/s² and 0.1 °/s
 
 Action = collections.namedtuple("Action", "at_s line text command")
-Script = collections.namedtuple("Script", "actions end_s")
+Roteiro = collections.namedtuple("Roteiro", "actions end_s")
 Command = collections.namedtuple("Command", "name args")
 
 _TIME_AND_COMMAND = re.compile(r"(\d+):([0-5]\d)\s+(.+)")
@@ -49,6 +49,7 @@ OBD_STATES = {"esperando-pi": "waiting_pi", "escutando": "listening", "descobrin
               "lendo": "reading", "sem-resposta": "no_response", "velocidade-errada": "wrong_bitrate",
               "linha-presa": "line_stuck", "falha-can": "can_failure", "bloqueado": "locked"}
 IMU_STATES = {"ok": "ok", "falha": "failed"}
+_ROTEIRO_NAMES = {english: name for states in (OBD_STATES, IMU_STATES) for name, english in states.items()}
 SOURCES = ("imu", "obd")
 
 
@@ -86,7 +87,7 @@ _COMMANDS = (
 )
 
 
-class ScriptError(ValueError):
+class RoteiroError(ValueError):
     """A roteiro that does not run: the message says which line."""
 
 
@@ -100,7 +101,7 @@ def parse_command(text):
     raise ValueError(f'comando desconhecido: "{words}"')
 
 
-def parse_script(text):
+def parse_roteiro(text):
     """The roteiro's actions in order, and when it ends (§6)."""
     actions = []
     end_s = None
@@ -110,26 +111,26 @@ def parse_script(text):
             continue
         match = _TIME_AND_COMMAND.fullmatch(content)
         if not match:
-            raise ScriptError(f'linha {line}: esperava o tempo em m:ss e um comando: "{content}"')
+            raise RoteiroError(f'linha {line}: esperava o tempo em m:ss e um comando: "{content}"')
         at_s = int(match[1]) * 60 + int(match[2])
         try:
             command = parse_command(match[3])
         except ValueError as error:
-            raise ScriptError(f"linha {line}: {error}") from None
+            raise RoteiroError(f"linha {line}: {error}") from None
         if end_s is not None:
-            raise ScriptError(f"linha {line}: nada pode vir depois do fim")
+            raise RoteiroError(f"linha {line}: nada pode vir depois do fim")
         if actions and at_s < actions[-1].at_s:
-            raise ScriptError(f"linha {line}: o tempo {match[1]}:{match[2]} vem antes do da linha "
+            raise RoteiroError(f"linha {line}: o tempo {match[1]}:{match[2]} vem antes do da linha "
                               f"{actions[-1].line}")
         if command.name == "end":
             end_s = at_s
         else:
             actions.append(Action(at_s, line, " ".join(match[3].split()), command))
     if not actions:
-        raise ScriptError("o roteiro não tem nenhuma ação")
+        raise RoteiroError("o roteiro não tem nenhuma ação")
     if end_s is None:
         end_s = actions[-1].at_s + END_AFTER_LAST_S
-    return Script(actions, end_s)
+    return Roteiro(actions, end_s)
 
 
 class SimulatorError(Exception):
@@ -143,7 +144,7 @@ class Simulator:
     "reinicia esp32" can stop it and start it again.
     """
 
-    def __init__(self, port=DEFAULT_PORT, firmware=None, script=None, duration_s=None):
+    def __init__(self, port=DEFAULT_PORT, firmware=None, roteiro=None, duration_s=None):
         self.car = CarModel()
         self.decoder = Decoder()
         self.samples = dict.fromkeys(SOURCES, 0)
@@ -155,18 +156,19 @@ class Simulator:
         self._firmware = firmware
         self._child = None
         self._fd = None
-        self._actions = list(script.actions) if script else []
-        ends = [end_s for end_s in (script and script.end_s, duration_s) if end_s is not None]
+        self._actions = list(roteiro.actions) if roteiro else []
+        ends = [end_s for end_s in (roteiro and roteiro.end_s, duration_s) if end_s is not None]
         self._end_tick = round(min(ends) * TICKS_PER_S) if ends else None
         self._tick_count = 0
         self._pinging = True
         self._imu_seq = 0
         self._ended = False
+        self._stopping = False
         self._last_status = None
 
     def run(self):
-        """Until the roteiro or the duration ends, or a Ctrl+C. True if every confere passed."""
-        handler = _ToRecord(self._record)
+        """Until the roteiro or the duration ends, or stop(). True if every confere passed."""
+        handler = _RecordHandler(self._record)
         for name in ("esp32", "esp32_decoder"):
             logging.getLogger(name).addHandler(handler)
         try:
@@ -174,8 +176,11 @@ class Simulator:
                 self._start_firmware()
             self._open_port()
             self._loop()
-        except KeyboardInterrupt:
-            self._record("interrompido")
+            if not self._ended and self._end_tick is not None:
+                # A phase gate cut short must not pass: its last confere never ran.
+                raise SimulatorError("interrompido antes do fim do roteiro ou da --duracao")
+            if not self._ended:
+                self._record("interrompido")
         except SimulatorError as error:
             self.error = str(error)
             self._record(f"ERRO: {error}")
@@ -186,13 +191,25 @@ class Simulator:
                 logging.getLogger(name).removeHandler(handler)
         return not self.failed_checks and self.error is None
 
+    def stop(self):
+        """Ends the run within a tick, as a Ctrl+C does. Safe from a signal handler."""
+        self._stopping = True
+
     def execute(self, command, line=None, text=None):
         """One command, from a roteiro line or, with #27, a click on the screen."""
         name, args = command
+        where = f"linha {line}: {text}" if line else text
         if name.startswith("check_"):
-            self._check(name, args, line, text)
+            expected, seen = self._seen(name, args)
+            if seen == expected:
+                self.checks_passed += 1
+                self._record(f"{where}: certo")
+            else:
+                self.failed_checks.append({"line": line, "command": text, "expected": expected,
+                                           "seen": seen, "at_s": self._tick_count / TICKS_PER_S})
+                self._record(f"{where}: FALHOU, esperado {expected}, visto {seen}")
             return
-        self._record(f"linha {line}: {text}" if line else text)
+        self._record(where)
         if name == "ignition":
             self.car.ignition = args[0]
         elif name == "start":
@@ -229,7 +246,7 @@ class Simulator:
 
     def _loop(self):
         start = time.monotonic()
-        while not self._ended:
+        while not self._ended and not self._stopping:
             due = start + self._tick_count * TICK_S
             ready, _, _ = select.select([self._fd], [], [], max(0.0, due - time.monotonic()))
             if ready:
@@ -240,7 +257,8 @@ class Simulator:
                 if now - due > MAX_LAG_S:
                     self._tick_count = int((now - start) * TICKS_PER_S)
                 self._tick()
-                self._tick_count += 1
+                if not self._ended:
+                    self._tick_count += 1
 
     def _tick(self):
         """Actions, car, IMU_SIM, feed() and data_to_send(), in the order of SIMULADOR.md §2."""
@@ -251,6 +269,7 @@ class Simulator:
             self.execute(action.command, action.line, action.text)
         if self._end_tick is not None and self._tick_count >= self._end_tick:
             self._ended = True
+        if self._ended:
             return
         self.car.step(TICK_S)
         reading = [max(-32767, min(32767, round(value * scale)))
@@ -279,32 +298,21 @@ class Simulator:
         status = (stats["boot"], esp32["obd_state"], esp32["imu_state"])
         if status != self._last_status:
             self._last_status = status
-            self._record(f"STATUS: boot 0x{status[0]:04X}, obd {_roteiro_name(OBD_STATES, status[1])}, "
-                         f"imu {_roteiro_name(IMU_STATES, status[2])}")
+            self._record(f"STATUS: boot 0x{status[0]:04X}, obd {_roteiro_name(status[1])}, "
+                         f"imu {_roteiro_name(status[2])}")
 
-    def _check(self, name, args, line, text):
-        """A confere: what the simulator knows now against what the roteiro expects (TESTES.md §4)."""
+    def _seen(self, name, args):
+        """A confere's expected and seen values, from what the simulator knows now (TESTES.md §4)."""
         stats = self.decoder.stats()
-        esp32 = stats["esp32"]
-        if name == "check_obd":
-            expected = args[0]
-            seen = _roteiro_name(OBD_STATES, esp32["obd_state"]) if esp32 else "nenhum STATUS"
-        elif name == "check_imu":
-            expected = args[0]
-            seen = _roteiro_name(IMU_STATES, esp32["imu_state"]) if esp32 else "nenhum STATUS"
-        elif name == "check_boots":
-            expected, seen = str(args[0]), str(stats["counters"]["boots"])
-        else:
+        if name == "check_boots":
+            return str(args[0]), str(stats["counters"]["boots"])
+        if name == "check_empty":
             source, count = args
-            expected, seen = str(count), str(self.empty[source])
-        where = f"linha {line}: {text}" if line else text
-        if seen == expected:
-            self.checks_passed += 1
-            self._record(f"{where}: certo")
-        else:
-            self.failed_checks.append({"line": line, "command": text, "expected": expected, "seen": seen,
-                                       "at_s": self._tick_count / TICKS_PER_S})
-            self._record(f"{where}: FALHOU, esperado {expected}, visto {seen}")
+            return str(count), str(self.empty[source])
+        esp32 = stats["esp32"]
+        if esp32 is None:
+            return args[0], "nenhum STATUS"
+        return args[0], _roteiro_name(esp32["obd_state" if name == "check_obd" else "imu_state"])
 
     def _start_firmware(self):
         if os.path.islink(self._port):
@@ -376,10 +384,15 @@ class Simulator:
         return f"a porta {self._port} fechou"
 
     def _write(self, data):
+        # A full port loses the bytes, as on the wire, and a partial write cuts a message, which the
+        # firmware drops with the next. Neither happens while the firmware reads: 100 IMU_SIM a
+        # second are about 2 KB, and the pty holds about 17 KB.
         try:
             os.write(self._fd, data)
         except BlockingIOError:
-            pass                        # the port is full: the bytes are lost, as on the wire
+            pass
+        except OSError:
+            raise SimulatorError(self._why_closed()) from None
 
     def _record(self, text):
         """One line of the registro, at the simulator's time (SIMULADOR.md §5)."""
@@ -387,7 +400,7 @@ class Simulator:
         print(f"{int(minutes)}:{seconds:05.2f} {text}", flush=True)
 
 
-class _ToRecord(logging.Handler):
+class _RecordHandler(logging.Handler):
     """The ESP32's LOGs and the decoder's own errors go to the registro."""
 
     _NAMES = {"esp32": "LOG do ESP32", "esp32_decoder": "decodificador"}
@@ -406,9 +419,9 @@ def _without_pings(data):
     return b"".join(frame + b"\x00" for frame in frames if cobs_decode(frame)[0] != PING)
 
 
-def _roteiro_name(names, decoder_name):
-    """The roteiro's name for a state the decoder names in English."""
-    return next((name for name, english in names.items() if english == decoder_name), decoder_name)
+def _roteiro_name(state):
+    """The roteiro's name for a state the decoder names in English: waiting_pi is esperando-pi."""
+    return _ROTEIRO_NAMES.get(state, state)
 
 
 def parse_duration(text):
@@ -437,9 +450,8 @@ def print_summary(summary):
     lines.append("decodificador: " + _counters(summary["decoder"]["counters"]))
     esp32 = summary["esp32"]
     if esp32:
-        lines.append(f"último STATUS: firmware {esp32['firmware']}, obd "
-                     f"{_roteiro_name(OBD_STATES, esp32['obd_state'])}, imu "
-                     f"{_roteiro_name(IMU_STATES, esp32['imu_state'])}, taxas imu {esp32['imu_rate']} "
+        lines.append(f"último STATUS: firmware {esp32['firmware']}, obd {_roteiro_name(esp32['obd_state'])}, "
+                     f"imu {_roteiro_name(esp32['imu_state'])}, taxas imu {esp32['imu_rate']} "
                      f"obd {esp32['obd_rate']}; {_counters(esp32['counters'])}")
     else:
         lines.append("último STATUS: nenhum")
@@ -449,10 +461,6 @@ def print_summary(summary):
 
 def _counters(counters):
     return ", ".join(f"{name} {value}" for name, value in counters.items())
-
-
-def _interrupt(_signum, _frame):
-    raise KeyboardInterrupt
 
 
 def main(argv=None):
@@ -471,18 +479,20 @@ def main(argv=None):
     if not args.sem_tela:
         parser.error("a tela chega no #27; por enquanto, use --sem-tela")
 
-    script = None
+    roteiro = None
     if args.roteiro:
         try:
             with open(args.roteiro, encoding="utf-8") as file:
-                script = parse_script(file.read())
-        except (OSError, ScriptError) as error:
+                roteiro = parse_roteiro(file.read())
+        except (OSError, RoteiroError) as error:
             parser.exit(2, f"{args.roteiro}: {error}\n")
-        if args.firmware is None and any(action.command.name == "restart" for action in script.actions):
+        if args.firmware is None and any(action.command.name == "restart" for action in roteiro.actions):
             parser.error("o roteiro usa reinicia esp32, que precisa de --firmware")
 
-    signal.signal(signal.SIGTERM, _interrupt)
-    simulator = Simulator(args.porta, args.firmware, script, args.duracao)
+    simulator = Simulator(args.porta, args.firmware, roteiro, args.duracao)
+    # A flag, not an exception: a 2nd Ctrl+C never cuts the firmware's stop short.
+    for signum in (signal.SIGINT, signal.SIGTERM):
+        signal.signal(signum, lambda *_: simulator.stop())
     passed = simulator.run()
     print_summary(simulator.summary())
     return 0 if passed else 1

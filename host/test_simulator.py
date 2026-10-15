@@ -43,8 +43,14 @@ class HeadlessSimulator(unittest.TestCase):
             [sys.executable, SIMULATOR, "--firmware", FIRMWARE, "--sem-tela", "--roteiro", path,
              "--porta", os.path.join(self.dir.name, f"{name}-esp32")],
             stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
-        self.addCleanup(lambda: process.poll() is None and process.kill())
+        self.addCleanup(self.stop, process)
         return process
+
+    def stop(self, process):
+        """A SIGTERM, so the simulator stops its firmware; a SIGKILL would leave it running."""
+        if process.poll() is None:
+            process.terminate()
+            process.communicate(timeout=10)
 
     def finish(self, process):
         """The exit code and the summary, the JSON line at the end of the output."""
@@ -59,12 +65,13 @@ class HeadlessSimulator(unittest.TestCase):
         self.assertEqual(0, code, summary)
         self.assertEqual(2, summary["boots"])
         self.assertEqual({"passed": 3, "failed": []}, summary["checks"])
-        self.assertEqual(7, round(summary["duration_s"]))
+        self.assertEqual(7.0, summary["duration_s"])
         self.assertEqual("waiting_pi", summary["esp32"]["obd_state"])
         # Until the IMU simulada registers for it (#21), each IMU_SIM counts in rejeitadas:
-        # 100 a second over the 3 s from the restart to the last STATUS.
+        # 100 a second over the 3 s from the restart to the last STATUS, plus the ticks the
+        # restart held up, sent in a burst once the port opens again.
         self.assertGreater(summary["esp32"]["counters"]["rejected"], 250)
-        self.assertLess(summary["esp32"]["counters"]["rejected"], 350)
+        self.assertLess(summary["esp32"]["counters"]["rejected"], 400)
 
         code, summary = self.finish(wrong)
         self.assertEqual(1, code, summary)

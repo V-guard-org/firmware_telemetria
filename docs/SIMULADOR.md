@@ -226,8 +226,11 @@ O programa termina com código de saída 1 se algum `confere` ou algum critério
 
 *Emenda do #20 (15/10/2026):*
 - **Saída.** O registro (as linhas do roteiro, o resultado de cada `confere`, as mudanças do STATUS, as amostras vazias e os LOGs do ESP32) sai na saída padrão, uma linha por fato, com o tempo do simulador. O resumo vem no fim, e a linha JSON é sempre a última. A saída do firmware nativo continua na saída de erro.
-- **Códigos de saída.** 0 se tudo deu certo. 1 se algum `confere` falhou ou se a corrida quebrou: a porta fechou, ou o firmware terminou sozinho. 2 se nada rodou: uma opção errada, ou uma linha do roteiro que o programa não entende.
-- **O firmware filho** roda numa sessão própria: um Ctrl+C para o simulador, e o simulador para o firmware. Para reiniciar, o simulador fecha a porta, manda SIGTERM ao firmware (SIGKILL depois de 2 s), apaga um atalho que tenha sobrado, inicia o firmware de novo, espera o atalho novo e reabre a porta. A porta é aberta com `TCSANOW`, e não com o `TCSAFLUSH` do `tty.setraw()`, para não perder o STATUS do boot.
+- **Códigos de saída.**
+  - 0 se tudo deu certo.
+  - 1 se algum `confere` falhou ou se a corrida quebrou: a porta não abriu ou fechou, o firmware terminou sozinho, ou um Ctrl+C (ou SIGTERM) a cortou antes do fim do roteiro ou da `--duracao`. Uma passagem de fase cortada no meio não pode parecer aprovada, porque os últimos `confere` não rodaram. Sem roteiro e sem `--duracao`, o Ctrl+C é o fim normal e dá 0.
+  - 2 se nada rodou: uma opção errada, ou uma linha do roteiro que o programa não entende.
+- **O firmware filho** roda numa sessão própria: um Ctrl+C para o simulador, e o simulador para o firmware. O Ctrl+C e o SIGTERM só marcam o fim, que vem no tique seguinte; um 2º sinal não interrompe a parada do firmware. Para reiniciar, o simulador fecha a porta, manda SIGTERM ao firmware (SIGKILL depois de 2 s), apaga um atalho que tenha sobrado, inicia o firmware de novo, espera o atalho novo e reabre a porta. A porta é aberta com `TCSANOW`, e não com o `TCSAFLUSH` do `tty.setraw()`, para não perder o STATUS do boot.
 - **Até a tela (#27),** o `--sem-tela` é obrigatório. Um roteiro com `reinicia esp32` pede `--firmware`, até existir o pulso no RTS da fase 2.
 - **Até a IMU simulada (#21),** o firmware nativo soma cada IMU_SIM em `rejeitadas` ([`PROTOCOLO.md` §4.3](PROTOCOLO.md)), cerca de 100 por segundo.
 
@@ -275,6 +278,7 @@ host/
   roteiros/             volta-no-bairro.txt, liga-e-desliga.txt, falhas.txt, volta-no-maximo.txt
   test_ecu_sim.py       ida e volta das fórmulas de cada PID (unittest)
   test_roteiros.py      leitura dos roteiros (unittest)
+  test_simulator.py     o simulador sem tela com o firmware nativo, um roteiro curto (#20)
   esp32_decoder.py      (#12) usado pelo simulador no papel da Pi
   fake_esp32.py         (#12) passa a tirar os valores do car_model.py
 ```

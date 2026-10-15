@@ -315,7 +315,7 @@ Se a versão do STATUS for desconhecida, o decodificador avisa "versão incompat
 4. Com os pares mais rápidos dos últimos minutos, o decodificador ajusta uma reta, `monotônico = a + b·t_us`. A reta corrige o deslocamento e também a deriva do cristal do ESP32. Enquanto os pares cobrirem pouco tempo, só o deslocamento é usado.
 5. Na entrega, o horário monotônico vira hora real com `time.time() − time.monotonic()`, calculado naquele momento. Se o chrony corrigir a hora da Pi aos saltos quando o GPS pegar sinal, as amostras seguintes já saem certas.
 
-O número de pares e o tamanho da janela estão no [`DECODIFICADOR.md` §3.8](DECODIFICADOR.md). São valores iniciais, calibrados na bancada no #13.
+O número de pares e o tamanho da janela estão no [`DECODIFICADOR.md` §3.8](DECODIFICADOR.md). São valores iniciais; o [`TESTES.md` §7](TESTES.md) diz como o horário é medido e quando eles mudam.
 
 ### 6.4 Taxas de envio (RF29)
 
@@ -390,6 +390,6 @@ no cabo (9):        02 81 01 02 07 02 1A 01 00
 - **[`DECODIFICADOR.md`](DECODIFICADOR.md)** (ticket #12): os dicionários entregues ao leitor da Isabela, os nomes dos campos e as funções do decodificador.
 - **[`MAQUINAS-DE-ESTADO.md`](MAQUINAS-DE-ESTADO.md)** (ticket #8): quando o ESP32 pergunta ao carro, quando o carro conta como "sem resposta", e qual central responde a cada PID.
 - **[`PLATAFORMA.md`](PLATAFORMA.md)** (ticket #10): onde o núcleo portátil monta, envia e recebe estas mensagens, e o que fica na camada de plataforma.
-- **Ticket #13:** como provar tudo isto (testes, ensaio de 2 h).
+- **[`TESTES.md`](TESTES.md)** (ticket #13): como provar tudo isto: os testes, o ensaio de 2 h e a medição do horário.
 - **[`SIMULADOR.md`](SIMULADOR.md)** (ticket #9): o que o simulador põe na IMU_SIM e como faz o papel da Pi no desenvolvimento.
 - **[#11](https://github.com/V-guard-org/firmware_telemetria/issues/11):** qual UART do ESP32 vai para os fios na fase 4, que não pode ser a UART0.

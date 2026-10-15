@@ -181,3 +181,24 @@ _Avoid_: ESP32 simulado, simulador (para ele)
 **Adaptador USB-CAN**:
 O segundo ESP32, que liga o notebook ao barramento CAN real na bancada.
 _Avoid_: ECU simulada (para a placa)
+
+### Testes
+
+**Passagem de fase**:
+A lista do que precisa passar para começar a fase seguinte. Só os itens de segurança bloqueiam, e só antes do ensaio no carro; o resto vira pendência com prazo.
+_Avoid_: portão (reservado à lista fechada), gate, marco
+
+**Item de segurança**:
+Um dos cinco comportamentos que protegem o carro: a lista fechada, o transceptor silencioso no boot e depois de uma pane, o silêncio sem a Pi, o bloqueio na 3ª falha e a escuta antes de falar. Precisa estar provado antes do ensaio no carro.
+
+**Ensaio**:
+Uma execução longa e registrada, com critérios fixos, no notebook, na bancada ou no carro, como o ensaio de 2 h. O resultado fica num arquivo em `docs/ensaios/`.
+_Avoid_: teste (reservado aos testes automáticos), rodada
+
+**Build de teste**:
+O firmware do ESP32 compilado com ganchos de teste, como travar de propósito ou pulsar um pino. Serve só para ensaios e nunca é o firmware entregue.
+_Avoid_: firmware de debug, modo de teste
+
+**Gerador de tráfego**:
+A terceira placa ESP32 da bancada, com um programa que só põe quadros no barramento, para imitar as centrais do carro conversando entre si.
+_Avoid_: ECU simulada (que responde ao OBD), adaptador USB-CAN

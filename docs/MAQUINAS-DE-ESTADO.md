@@ -185,7 +185,7 @@ O firmware não usa `twai_node_recover()` (#10 Q3). A norma pede 128 × 11 bits 
 | Falhas até o bloqueio | 3 por boot | #8 Q8 |
 | Pi ausente | 3 s sem PING | #8 Q3 |
 
-São valores iniciais, a ajustar na bancada (#13).
+Os tempos têm três origens: norma e datasheet, escolhas nossas e comportamento do carro ([`TESTES.md` §14](TESTES.md)). A bancada só confere que funcionam como estão escritos. Os do 3º grupo (os 2 s sem resposta e as 5 faltas) dependem do carro e são conferidos no ensaio no carro (#13 Q13).
 
 ## 3. IMU
 
@@ -217,10 +217,10 @@ stateDiagram-v2
 | Um defeito tenta enviar um quadro fora da lista | Quadro barrado → BLOQUEADO | `bloqueadas` = 1 e um LOG de erro |
 | O carro diz suportar 0x42, mas nunca responde | 5 faltas → 0x42 sai da agenda | A tensão some da amostra, e os outros PIDs não são atrasados |
 
-Estes cenários são a base dos testes do #13.
+Cada cenário vira um teste do núcleo ([`TESTES.md` §3.1](TESTES.md)), e os que dependem do hardware são repetidos na bancada ([`TESTES.md` §10.3](TESTES.md)).
 
 ## 5. Fora deste documento
 
 - **[`PLATAFORMA.md`](PLATAFORMA.md)** (ticket #10): como a camada de plataforma oferece ao núcleo o pino de liberação, a recriação do nó, o resumo da escuta, os motivos de falha e o relógio.
 - **Driver CAN (ticket #14):** o firmware usa o driver TWAI novo do ESP-IDF 6.1, que tem tudo o que este documento usa: `fail_retry_cnt`, `ack_err`, `arb_lost`, `on_state_change` e o modo listen-only.
-- **Ticket #13:** como provar cada cenário, no notebook e na bancada.
+- **[`TESTES.md`](TESTES.md)** (ticket #13): como provar cada cenário, no notebook e na bancada.

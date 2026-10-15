@@ -310,7 +310,7 @@ Um PONG é casado com o PING pelo `seq_ping`. Um PONG sem PING correspondente no
 
 ### 3.8 Sincronização do horário
 
-Valores iniciais, em constantes no topo do arquivo, a calibrar na bancada ([#13](https://github.com/V-guard-org/firmware_telemetria/issues/13)):
+Valores iniciais, em constantes no topo do arquivo. Não mudam por padrão: só uma medição do horário com erro acima de 5 ms, ou um `slow_pongs` acima de 10% dos PINGs, leva a uma análise ([`TESTES.md` §7](TESTES.md)). O `MAX_RTT_S` vem da D12 e não muda.
 
 | Constante | Valor | Função |
 |---|---|---|
@@ -381,11 +381,13 @@ host/
   test_esp32_decoder.py   testes, com os vetores do PROTOCOLO.md §8 e um relógio falso
 ```
 
+Os testes usam o `unittest` da biblioteca padrão, para rodar também na Pi sem instalar nada: `python3 -m unittest discover -s host` ([`TESTES.md` §3.2](TESTES.md)).
+
 O código e os nomes ficam em inglês (D18).
 
 ## 6. Fora deste documento
 
 - **[`SIMULADOR.md`](SIMULADOR.md)** (ticket #9): o simulador do PC usa este decodificador no papel da Pi. É ele que envia o PING e mostra o `stats()` ao vivo.
-- **Ticket [#13](https://github.com/V-guard-org/firmware_telemetria/issues/13):** calibrar a sincronização (§3.8), medindo o erro do horário na bancada, e testar o decodificador ponta a ponta com o ESP32 falso e com o firmware.
+- **[`TESTES.md`](TESTES.md)** (ticket #13): a medição do horário com um fio na fase 4 (§7), o ensaio de 2 h e o `host/link_test.py`, que usa este decodificador no papel da Pi nos ensaios da fase 4.
 - **Isabela:** o leitor da UART e o `gerenciador_eventos`, incluindo o limite de idade para descartar valores do OBD e o uso do `stats()` na saúde do dispositivo.
 - **Nicolas:** o chrony com o PPS do GPS, que faz da hora da Pi o horário GPS.

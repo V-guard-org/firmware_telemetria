@@ -15,7 +15,8 @@ O que o firmware faz com cada mensagem está no [`PROTOCOLO.md`](PROTOCOLO.md), 
 - **Modelo do carro ligado.** Quem usa mexe no motorista (acelerador, freio, volante e ignição). Velocidade, rotação, valores OBD e leituras da IMU saem do mesmo cálculo, coerentes entre si.
 - **Tela no navegador,** servida pelo próprio programa em `http://localhost:8080`, só no notebook. Só a biblioteca padrão do Python 3.10+, no Linux.
 - **Roteiros em texto:** uma ação por linha, com os mesmos comandos dos botões.
-- **Sem tela,** o mesmo programa roda o ensaio de 2 h do #13 e imprime o critério da D16.
+- **Sem tela,** o mesmo programa roda o ensaio de 2 h e imprime o critério da D16 ([`TESTES.md` §6](TESTES.md)).
+- **Roteiros que se conferem:** o comando `confere` compara o que chegou com o esperado, e o modo sem tela termina com erro se algo falhar (emenda do #13).
 - **Sem botões de falha do CAN.** Esses casos se provam nos testes e na bancada (§9).
 - **Não é o dashboard do produto.** O simulador não manda nada ao servidor; o dashboard é do backend, fora deste mapa.
 
@@ -131,7 +132,7 @@ A tela segue a variante A do protótipo: controles à esquerda, gráficos no mei
 | Pi | Manda PING | Desligado, o decodificador continua lendo, mas não envia PING; depois de 3 s, o firmware considera a Pi ausente |
 | | Pi travada | O decodificador não lê nem escreve. Na fase 1, o pty enche, e o firmware descarta mensagens (`descartadas`) |
 | | Taxas de envio da IMU e do OBD | As listas do [`PROTOCOLO.md` §4.2](PROTOCOLO.md), pelo `set_rates()` |
-| | Reiniciar o ESP32 | Fase 1: encerra e reinicia o firmware nativo, que o simulador iniciou como processo filho. Fase 2: um pulso no RTS da porta, com o DTR solto, que o circuito de reinício da DevKit leva ao EN (a conferir na bancada, #13). Nos dois casos, sai um boot novo. |
+| | Reiniciar o ESP32 | Fase 1: encerra e reinicia o firmware nativo, que o simulador iniciou como processo filho. Fase 2: um pulso no RTS da porta, com o DTR solto, que o circuito de reinício da DevKit leva ao EN (conferido na bancada, [`TESTES.md` §10.3](TESTES.md)). Nos dois casos, sai um boot novo. |
 | Roteiro | Escolher, rodar e parar | §6 |
 
 Os botões continuam valendo com um roteiro rodando. "Parar" cancela as ações que faltam, e o carro fica como estava.
@@ -187,6 +188,7 @@ Um roteiro é um arquivo de texto em `host/roteiros/`, com uma ação por linha:
 | Centrais | `atraso 30 ms`, `perda 10%` |
 | IMU simulada | `imu falha liga`, `imu falha desliga`, `imu sem-sinal liga`, `imu sem-sinal desliga`, `ruído liga`, `ruído desliga` |
 | Pi | `pi ping liga`, `pi ping desliga`, `pi trava`, `pi destrava`, `taxas imu 50 obd 5`, `reinicia esp32` |
+| Conferência | `confere obd lendo`, `confere imu falha`, `confere pid voltage ausente`, `confere vazias obd 1`, `confere central speed 7E9`, `confere boots 1` |
 | Fim | `fim` |
 
 **Roteiros iniciais** (os textos estão no protótipo):
@@ -196,6 +198,9 @@ Um roteiro é um arquivo de texto em `host/roteiros/`, com uma ação por linha:
 | `volta-no-bairro.txt` | 1:15 | Trajeto urbano até cerca de 50 km/h, com as seis manobras |
 | `liga-e-desliga.txt` | 0:55 | Partida sem interrupção do OBD; ignição desligada, com SEM_RESPOSTA e `{}`; a volta do OBD |
 | `falhas.txt` | 1:10 | PID mudo saindo da agenda; IMU em falha e sem sinal; Pi sem PING e travada; troca de taxas |
+| `volta-no-maximo.txt` | 1:15 | A `volta-no-bairro.txt` com `0:00 taxas imu 100 obd 10`, para os 30 min nas taxas máximas do ensaio |
+
+**Conferência (emenda do #13).** Um `confere` compara o que o simulador sabe naquele instante, pelo último STATUS, pelas amostras e pela ECU simulada, com o valor esperado. Um `confere` que falha vai para o registro, com o número da linha, e o roteiro continua. Os alvos, a folga de 2 s depois de uma mudança e um exemplo estão no [`TESTES.md` §4](TESTES.md). Os roteiros prontos ganham os seus `confere`.
 
 ## 7. Sem tela
 
@@ -203,11 +208,16 @@ Um roteiro é um arquivo de texto em `host/roteiros/`, com uma ação por linha:
 python3 host/simulator.py --roteiro host/roteiros/volta-no-bairro.txt --repetir --sem-tela --duracao 2h
 ```
 
-Sem a tela, o programa roda o roteiro e, ao fim, imprime um resumo, também como uma linha JSON, para o ensaio de 2 h do [#13](https://github.com/V-guard-org/firmware_telemetria/issues/13) (D16):
+Sem a tela, o programa roda o roteiro e, ao fim, imprime um resumo, também como uma linha JSON, para o ensaio de 2 h ([`TESTES.md` §6](TESTES.md), D16):
 - a duração e as amostras entregues (`imu`, `obd`);
 - as perdidas: `lost` mais o aumento de `descartadas`, e a razão sobre o total, que deve ficar abaixo de 0,1% ([`PROTOCOLO.md` §6.6](PROTOCOLO.md));
 - os boots vistos, que devem ser 1, ou seja, nenhum reinício;
+- `fora_da_lista`: os quadros do ESP32 que a ECU simulada viu fora da lista fechada, que deve ser 0 ([`TESTES.md` §5](TESTES.md));
+- `fora_do_esperado`: as amostras cujo conteúdo não bate com a IMU_SIM enviada ou com as respostas da ECU simulada, que deve ser 0 ([`TESTES.md` §6](TESTES.md));
+- os `confere` que falharam;
 - os demais contadores do `stats()` e do último STATUS.
+
+O programa termina com código de saída 1 se algum `confere` ou algum critério falhou (emenda do #13).
 
 Com `--gravar sessao.jsonl`, com ou sem tela, o programa grava uma linha por ação, por amostra entregue e por STATUS, e o estado do modelo 10 vezes por segundo.
 
@@ -238,7 +248,7 @@ O firmware deve perguntar `rpm` à `0x7E8`, a de menor endereço, e `speed` à `
 
 No notebook, o CAN é virtual (`vcan`): não tem ACK, disputa nem erros, então todo quadro "sai". O simulador não tem botões para fingir essas falhas (#9 Q8):
 - a lógica de cada caso se prova nos testes, com a porta CAN falsa ([`PLATAFORMA.md` §6](PLATAFORMA.md));
-- o hardware se prova na bancada da fase 2, com a falha feita à mão: desligar o adaptador do barramento para tirar o ACK, pôr o adaptador a 250 kbit/s para a velocidade errada, ligar a linha do barramento ao GND para a linha presa (a confirmar no #13).
+- o hardware se prova na bancada da fase 2, com a falha feita à mão: desligar o adaptador do barramento para tirar o ACK, pôr o adaptador a 250 kbit/s para a velocidade errada, ligar a linha do barramento ao GND para a linha presa, o que é seguro: passam 3,3 mA pelo *pull-up*. O roteiro completo da bancada está no [`TESTES.md` §10.3](TESTES.md).
 
 **Extensão possível,** se na fase 1 fizer falta ver ao vivo a reação inteira: botões que mandam a falha pela entrada do firmware nativo, que o simulador já inicia. A falha seria fingida só no adaptador CAN do notebook (`src/native/`), sem mudar o ESP32 nem o protocolo.
 
@@ -250,7 +260,9 @@ host/
   car_model.py          o modelo do carro (§3)
   ecu_sim.py            a ECU simulada: requisições OBD no SocketCAN, com as fórmulas inversas
   simulator.html        a tela (a variante A do protótipo, refeita)
-  roteiros/             volta-no-bairro.txt, liga-e-desliga.txt, falhas.txt
+  roteiros/             volta-no-bairro.txt, liga-e-desliga.txt, falhas.txt, volta-no-maximo.txt
+  test_ecu_sim.py       ida e volta das fórmulas de cada PID (unittest)
+  test_roteiros.py      leitura dos roteiros (unittest)
   esp32_decoder.py      (#12) usado pelo simulador no papel da Pi
   fake_esp32.py         (#12) passa a tirar os valores do car_model.py
 ```
@@ -262,7 +274,7 @@ host/
 
 ## 11. Fora deste documento
 
-- **[#13](https://github.com/V-guard-org/firmware_telemetria/issues/13):** o ensaio de 2 h com `--sem-tela`, o roteiro das falhas de CAN na bancada e a conferência do reinício pelo RTS.
+- **[`TESTES.md`](TESTES.md)** (ticket #13): o ensaio de 2 h com `--sem-tela`, o `confere`, o roteiro das falhas de CAN na bancada e a conferência do reinício pelo RTS.
 - **[#11](https://github.com/V-guard-org/firmware_telemetria/issues/11):** a UART do ESP32 para os fios da Pi, que não pode ser a UART0, e a alimentação com o USB e os fios ligados ao mesmo tempo (ADR-0009).
 - **Dashboard e servidor:** são do backend, fora do mapa do firmware. O simulador não manda nada a eles.
 - **Rastreamento:** a posição vem do GPS, ligado na Pi (T16, Nicolas). O simulador não simula posição (#9 Q15).

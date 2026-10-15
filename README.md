@@ -15,6 +15,8 @@ O planejamento foi concluído em 13/10/2026. O desenvolvimento começa pela fase
 | Núcleo portátil e camada de plataforma (portas, eventos, IMU simulada, estrutura do código) | [`docs/PLATAFORMA.md`](docs/PLATAFORMA.md) |
 | Decodificador Python, guia do leitor da Pi e ESP32 falso | [`docs/DECODIFICADOR.md`](docs/DECODIFICADOR.md) |
 | Simulador do PC (modelo do carro, controles, roteiros e tela) | [`docs/SIMULADOR.md`](docs/SIMULADOR.md) |
+| Testes, ensaios e o que precisa passar em cada fase | [`docs/TESTES.md`](docs/TESTES.md) |
+| Resultados dos ensaios (um arquivo por ensaio) | `docs/ensaios/` |
 | Mapa de decisões em aberto | [issue #1](https://github.com/V-guard-org/firmware_telemetria/issues/1) (etiqueta `wayfinder:map`) |
 | Resultados de pesquisas | ramos `research/*` |
 | Protótipos descartáveis | ramo `prototype/simulador` (#9) |

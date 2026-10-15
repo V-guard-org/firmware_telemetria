@@ -125,7 +125,7 @@ Valem para todo o `lib/`:
 | `transmit(quadro)` | Um quadro por vez. O resultado chega depois, como evento. | `twai_node_transmit()` | `write()` no socket |
 | `listen_summary()` | O que se viu desde o último `listen()` | Contadores da interrupção e do PCNT (abaixo) | Quadros lidos; nenhuma linha presa |
 
-- **A ordem do #8 §2.2 fica dentro de `talk()` e `listen()`.** Ela nunca se inverte, porque o núcleo não consegue chamar os passos separados. O pino e a ordem se provam na bancada (#13). No notebook não há transceptor.
+- **A ordem do #8 §2.2 fica dentro de `talk()` e `listen()`.** Ela nunca se inverte, porque o núcleo não consegue chamar os passos separados. O pino e a ordem se provam na bancada, com o osciloscópio ([`TESTES.md` §10.4](TESTES.md)). No notebook não há transceptor.
 - **Saída do *bus-off*.** Todo `listen()` recria o nó, e o nó novo começa em *error active*, com os contadores zerados. Por isso o firmware não usa `twai_node_recover()` (#10 Q3, [`MAQUINAS-DE-ESTADO.md` §2.6](MAQUINAS-DE-ESTADO.md)).
 - **Resultado da transmissão.** Pode ser ok, `arb_lost`, sem ACK ou erro de barramento (`bit_err`, `form_err` ou `stuff_err`). O driver avisa o motivo da falha em `on_error` e o fim da transmissão em `on_tx_done`. O adaptador guarda o motivo e entrega um único resultado.
 - **Estado do barramento:** *error active*, *warning*, *error passive* ou *bus-off*, vindo de `on_state_change`.
@@ -271,9 +271,9 @@ O `vcan` não tem ACK, disputa, erro de barramento nem *bus-off*: no notebook, t
 | Carro mudo (ECU simulada desligada) | ✔ | ✔, vai para SEM_RESPOSTA | ✔ |
 | Pi ausente | ✔ | ✔ | ✔ |
 | Sem ACK | ✔ | — | ✔ |
-| Disputa perdida (`arb_lost`) | ✔ | — | #13 |
+| Disputa perdida (`arb_lost`) | ✔ | — | ✔, com o gerador de tráfego ([`TESTES.md` §10.3](TESTES.md)) |
 | Erro de barramento, velocidade errada | ✔ | — | ✔ |
-| *Error passive*, *bus-off* | ✔ | — | ✔ |
+| *Error passive*, *bus-off* | ✔ | — | Só o *error passive*: na leitura, ele chega antes do *bus-off* |
 | Linha presa | ✔ | — | ✔ |
 | Violação da lista fechada | ✔ | — | — |
 
@@ -305,6 +305,6 @@ host/                Python: decodificador e ESP32 falso (#12); simulador, model
 
 - **[`SIMULADOR.md`](SIMULADOR.md)** (ticket #9): o que o simulador põe na IMU_SIM e como ele é controlado.
 - **[`DECODIFICADOR.md`](DECODIFICADOR.md)** (ticket #12): a API do decodificador para o leitor da Isabela. A IMU_SIM não faz parte dela.
-- **Ticket #13:** os testes de cada cenário e o roteiro da bancada.
-- **Bancada (fase 2):** confirmar o PCNT junto com o TWAI no GPIO26 e medir a sequência do GPIO27.
+- **[`TESTES.md`](TESTES.md)** (ticket #13): os testes de cada cenário, o roteiro da bancada e a sessão de osciloscópio.
+- **Bancada (fase 2):** o PCNT junto com o TWAI no GPIO26 se prova com os dois casos de velocidade errada, e a sequência do GPIO27, no osciloscópio ([`TESTES.md` §10](TESTES.md)).
 - **Driver da IMU real:** depende do modelo a ser comprado (T14.1).

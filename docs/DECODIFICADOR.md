@@ -2,7 +2,7 @@
 
 O código Python que transforma as mensagens do ESP32 em amostras com o horário da Pi e prepara as mensagens que a Pi envia. Especificação fechada no [ticket #12](https://github.com/V-guard-org/firmware_telemetria/issues/12) em 14/10/2026.
 
-**Falta a confirmação da Isabela** em três pontos, que mudam o código dela:
+A Isabela confirmou em 15/10/2026 os três pontos que mudam o código dela:
 - o formato das idades no OBD (§3.3);
 - a amostra vazia (§3.4);
 - a cópia do arquivo para o repositório dela (§2.1).
@@ -184,8 +184,6 @@ O instante de chegada dos bytes é lido no início de cada `feed()` e vale para 
 
 ### 3.3 Dicionário do OBD
 
-**(a confirmar pela Isabela: o formato de `age_ms`)**
-
 | Chave | PID | Valor | Fórmula | Unidade | Tipo |
 |---|---|---|---|---|---|
 | `load` | `0x04` | Carga do motor | A·100/255, arredondada a 1 casa | % | `float` |
@@ -209,8 +207,6 @@ Exemplo, com a mensagem OBD do [`PROTOCOLO.md` §8](PROTOCOLO.md):
 ```
 
 ### 3.4 Amostra vazia
-
-**(a confirmar pela Isabela)**
 
 Quando uma fonte para, o `update()` da Pi guarda a última amostra para sempre no `_latest`. Sem a amostra vazia, depois que o carro parasse de responder, todo evento seguinte sairia com um RPM de minutos atrás.
 

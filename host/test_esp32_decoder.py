@@ -605,6 +605,39 @@ class UnknownVersion(unittest.TestCase):
         self.decoder.feed(esp32_decoder.encode_message(0x01, 0xBEEF, 0))
         stats = self.decoder.stats()
         self.assertEqual([stats["counters"]["corrupt"], stats["incompatible"]], [1, False])
+        with self.assertLogs(level="ERROR"):
+            self.decoder.feed(status(version=2, seq=1) + esp32_decoder.encode_message(0x01, 0xBEEF, 2))
+        self.assertEqual(self.decoder.stats()["counters"]["corrupt"], 2)
+
+    def test_samples_of_that_boot_are_counted_without_being_read(self):
+        """Their layout may have changed with the version: an IMU of another size is not corrupt."""
+        with self.assertLogs(level="ERROR"):
+            self.decoder.feed(status(version=2)
+                              + esp32_decoder.encode_message(0x02, 0xBEEF, 1, bytes(20))
+                              + esp32_decoder.encode_message(0x03, 0xBEEF, 2, bytes(8) + b"\x09"))
+        counters = self.decoder.stats()["counters"]
+        self.assertEqual([counters["unsynced"], counters["corrupt"], counters["skipped_values"]], [2, 0, 0])
+
+    def test_its_log_and_unknown_types_go_on_as_always(self):
+        with self.assertLogs(level="WARNING") as logs:
+            self.decoder.feed(status(version=2) + log(1, "v2: bus-off", seq=1)
+                              + esp32_decoder.encode_message(0x7E, 0xBEEF, 2))
+        self.assertEqual([record.name for record in logs.records], ["esp32_decoder", "esp32"])
+        self.assertEqual(self.decoder.stats()["counters"]["unknown"], 1)
+
+    def test_a_reboot_into_an_unknown_version_stops_both_sources_at_the_pi_time(self):
+        """Without it, the Pi would keep the old boot's last samples as current (§3.4)."""
+        self.decoder.feed(status())
+        self.decoder.feed(pong(ping_seq(self.decoder.data_to_send()), 1_000_000))
+        self.decoder.feed(IMU_ON_WIRE + OBD_ON_WIRE)
+        self.clock.advance(0.5)
+        with self.assertLogs(level="ERROR"):
+            samples = self.decoder.feed(status(boot=0x1234, version=2))
+            self.assertEqual(self.decoder.feed(status(boot=0x1234, seq=1, version=2)), [])
+        self.assertEqual([(source, sample) for source, _, sample in samples], [("imu", {}), ("obd", {})])
+        for _, ts, _ in samples:
+            self.assertAlmostEqual(ts, self.clock.time(), delta=1e-6)
+        self.assertEqual(self.decoder.stats()["counters"]["empty"], 2)
 
 
 def taxas(seq, imu, obd):
@@ -628,7 +661,7 @@ class Rates(unittest.TestCase):
         self.assertEqual(self.requested(), {"imu": 100, "obd": 1})
 
     def test_a_rate_outside_the_list_raises_and_changes_nothing(self):
-        for imu, obd in ((30, None), (None, 3), (50, 0), (25.0, None), (None, "5")):
+        for imu, obd in ((30, None), (None, 3), (50, 0), (25.0, None), (None, "5"), (None, True)):
             with self.subTest(imu=imu, obd=obd), self.assertRaises(ValueError):
                 self.decoder.set_rates(imu=imu, obd=obd)
         self.assertEqual(self.requested(), {"imu": 25, "obd": 5})

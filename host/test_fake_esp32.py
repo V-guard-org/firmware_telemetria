@@ -127,11 +127,11 @@ class FakeEsp32WithDecoder(unittest.TestCase):
             self.assertAlmostEqual(max(gaps), gap, delta=1e-5)
 
     def test_a_rate_outside_the_list_is_rejected_and_the_other_field_applies(self):
-        for seq, rates in enumerate(([30, 10], [30, 3])):      # one count per message (DECODIFICADOR.md §4)
+        for seq, rates in enumerate(([30, 10], [30, 3])):      # one count per value (PROTOCOLO.md §4.2)
             self.esp32.feed(esp32_decoder.encode_message(esp32_decoder.TAXAS, 0, seq, bytes(rates)))
         self.decoder.feed(self.esp32.data_to_send())            # the STATUS of the start
         esp32 = self.decoder.stats()["esp32"]
-        self.assertEqual([esp32["imu_rate"], esp32["obd_rate"], esp32["counters"]["rejected"]], [25, 10, 2])
+        self.assertEqual([esp32["imu_rate"], esp32["obd_rate"], esp32["counters"]["rejected"]], [25, 10, 3])
 
     def start_fake(self, **options):
         """A fake with the options of DECODIFICADOR.md §4, in place of the one setUp made."""

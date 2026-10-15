@@ -147,7 +147,7 @@ class Decoder:
         self._next_ping_at = None
         self._ping_now = False          # a new boot: one more PING, off the 1 s schedule
         self._requested = dict(_DEFAULT_RATES)
-        self._send_rates = False        # a STATUS showed other rates than the requested ones
+        self._rates_pending = False     # a STATUS showed other rates than the requested ones
         self._buffer = b""
         self._skipping = False          # dropped an overlong buffer; wait for the next 0x00
         self._counters = {"lost": 0, "corrupt": 0, "unsynced": 0, "unknown": 0, "skipped_values": 0,
@@ -159,7 +159,7 @@ class Decoder:
         self._esp32 = None
         self._pings = {}                # seq → instant each PING went out
         self._sync = _Sync()
-        self._live = {"imu": False, "obd": False}   # the last sample delivered had values (§3.4)
+        self._live = {"imu": False, "obd": False}   # the last sample delivered had values
 
     def feed(self, data):
         """Bytes read from the port. Returns the samples ready for update()."""
@@ -181,12 +181,15 @@ class Decoder:
             self._buffer = rest
             samples = []
             if self._last_valid_at is not None and now - self._last_valid_at >= LINK_TIMEOUT_S:
-                # The ESP32 went silent: no t_us to convert, so the Pi's time now.
-                samples += [(source, now + wall_offset, {}) for source in self._stop(("imu", "obd"))]
+                # The ESP32 went silent (DECODIFICADOR.md §3.4): no t_us to convert, so the Pi's time now.
+                samples += [(source, now + wall_offset, {}) for source in self._newly_stopped(("imu", "obd"))]
             for frame in frames:
                 if frame:                   # back-to-back zeros carry no message
                     for source, t_us, values in self._handle_frame(frame, now):
                         samples.append((source, self._sync.to_monotonic(t_us) + wall_offset, values))
+            if self._incompatible:
+                # A firmware we cannot read: for the Pi, both sources stopped, at its time now.
+                samples += [(source, now + wall_offset, {}) for source in self._newly_stopped(("imu", "obd"))]
             return samples
 
     def data_to_send(self):
@@ -204,15 +207,15 @@ class Decoder:
                 self._next_ping_at = (self._next_ping_at or now) + PING_INTERVAL_S
                 if self._next_ping_at <= now:   # the reader stalled; no burst to catch up
                     self._next_ping_at = now + PING_INTERVAL_S
-            if self._send_rates:
+            if self._rates_pending:
                 out += self._message(TAXAS, _TAXAS.pack(self._requested["imu"], self._requested["obd"]))
-                self._send_rates = False
+                self._rates_pending = False
             return bytes(out)
 
     def set_rates(self, imu=None, obd=None):
         """The rates the ESP32 should send at, in samples/s; None keeps that one as it is."""
         for source, value, accepted in (("imu", imu, _IMU_RATES), ("obd", obd, _OBD_RATES)):
-            if value is not None and not (isinstance(value, int) and value in accepted):
+            if value is not None and not (type(value) is int and value in accepted):     # no True, no 25.0
                 raise ValueError(f"the {source} rate must be one of {accepted}, not {value!r}")
         with self._lock:
             self._requested = {"imu": self._requested["imu"] if imu is None else imu,
@@ -268,25 +271,14 @@ class Decoder:
                 _log.error("the ESP32 (boot 0x%04X) speaks protocol version %d, and esp32_decoder %s "
                            "knows %s: no samples from it until this file is updated",
                            boot, body[0], VERSION, PROTOCOL_VERSIONS)
-        elif self._incompatible:
-            # Only the version byte is sure to be where we expect: this boot's samples are just counted.
-            if msg_type in (IMU, OBD):
-                self._counters["unsynced"] += 1
+        elif self._incompatible and msg_type in (IMU, OBD):
+            # Their layout may have changed with the version: counted, not read.
+            self._counters["unsynced"] += 1
         elif msg_type in _MIN_BODY and len(body) < _MIN_BODY[msg_type]:
             # The CRC matched, so the header counted above; only the body is unreadable.
             self._counters["corrupt"] += 1
         elif msg_type == STATUS:
-            self._esp32 = _parse_status(body)
-            # No ACK: the STATUS is the confirmation, and a TAXAS goes until it shows the rates (§6.4).
-            in_use = (self._esp32["imu_rate"], self._esp32["obd_rate"])
-            self._send_rates = in_use != (self._requested["imu"], self._requested["obd"])
-            if self._synced():
-                # The 1st STATUS that shows a source stopped, converted by this boot's pairs (§3.4).
-                t_us = _STATUS.unpack_from(body)[1]
-                stopped = [source for source, stop in (("imu", self._esp32["imu_state"] == "failed"),
-                                                        ("obd", self._esp32["obd_state"] != "reading"))
-                           if stop]
-                return [(source, t_us, {}) for source in self._stop(stopped)]
+            return self._handle_status(body)
         elif msg_type == LOG:
             _t_us, level = _LOG.unpack_from(body)
             _esp32_logger.log(logging.ERROR if level == _LOG_ERROR else logging.WARNING,
@@ -310,11 +302,26 @@ class Decoder:
             else:
                 t_us, values, skipped = parsed
                 self._counters["skipped_values"] += skipped
-                if values["age_ms"]:    # some value left; {} would mean the OBD stopped (§3.4)
+                if values["age_ms"]:    # some value left; {} would mean it stopped (DECODIFICADOR.md §3.4)
                     return self._deliver("obd", t_us, values)
         else:
             self._counters["unknown"] += 1
         return []
+
+    def _handle_status(self, body):
+        """Shows the STATUS in stats(), asks for the rates again, and stops the sources it shows stopped."""
+        self._esp32 = _parse_status(body)
+        # No ACK: the STATUS confirms, and a TAXAS goes until it shows the rates (PROTOCOLO.md §6.4).
+        in_use = (self._esp32["imu_rate"], self._esp32["obd_rate"])
+        self._rates_pending = in_use != (self._requested["imu"], self._requested["obd"])
+        if not self._synced():
+            return []
+        # The 1st synced STATUS that shows a source stopped gives its {} (DECODIFICADOR.md §3.4).
+        stopped = [source for source, stop in (("imu", self._esp32["imu_state"] == "failed"),
+                                                ("obd", self._esp32["obd_state"] != "reading"))
+                   if stop]
+        t_us = _STATUS.unpack_from(body)[1]
+        return [(source, t_us, {}) for source in self._newly_stopped(stopped)]
 
     def _deliver(self, source, t_us, values):
         """The sample, if this boot has a STATUS and a pair to convert its t_us (PROTOCOLO.md §6.2)."""
@@ -325,8 +332,8 @@ class Decoder:
         self._live[source] = True
         return [(source, t_us, values)]
 
-    def _stop(self, sources):
-        """The sources that get an empty sample: once per stop, so only if the last one had values (§3.4)."""
+    def _newly_stopped(self, sources):
+        """Those that get their {} now: once per stop, so only if their last sample had values."""
         stopped = [source for source in sources if self._live[source]]
         for source in stopped:
             self._live[source] = False

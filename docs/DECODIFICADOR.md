@@ -219,9 +219,11 @@ O decodificador entrega `(source, ts, {})` uma vez quando a fonte para:
 | O OBD saiu de LENDO: carro sem resposta, bloqueio, falha do CAN ou ESP32 reiniciado | `obd` | No 1º STATUS sincronizado com `estado_obd` diferente de LENDO | O `t_us` do STATUS, convertido |
 | A IMU entrou em falha | `imu` | No 1º STATUS sincronizado com `estado_imu` = falha | O `t_us` do STATUS, convertido |
 | O ESP32 está mudo (cabo solto, ESP32 travado) | As duas | 3 s depois da última mensagem válida | A hora da Pi naquele momento |
+| O ESP32 reiniciou com um firmware de versão de protocolo desconhecida (§3.9) | As duas | No 1º STATUS desse boot | A hora da Pi naquele momento |
 
 - **Uma vez por parada.** Só sai o `{}` se a última amostra entregue daquela fonte tinha valores. Vale entre boots: depois de um reinício, o `{}` do OBD sai no 1º STATUS sincronizado do boot novo, que mostra o OBD fora de LENDO.
 - **Silêncio.** É conferido no início de cada `feed()`, então o `{}` sai até 100 ms depois dos 3 s (§2.2). Se a mesma leitura trouxer mensagens novas, ele sai antes das amostras delas.
+- **STATUS na frente.** Na fila do ESP32, o STATUS passa à frente das amostras ([`PROTOCOLO.md` §6.5](PROTOCOLO.md)). Se uma amostra OBD feita antes da parada ainda estiver na fila quando sair o STATUS que mostra a parada, ela chega depois do `{}`, e o `{}` se repete no STATUS seguinte, até 1 s depois. A amostra é entregue mesmo assim: os valores dela valem para o seu `ts`, e o `age_ms` mostra a idade deles. É raro, porque a fila esvazia em milissegundos.
 - **Retorno.** Quando a fonte volta, as amostras voltam normalmente.
 - **Contagem.** As amostras vazias somam em `empty`, e não em `imu` ou `obd`.
 
@@ -335,10 +337,11 @@ Como funciona:
 ### 3.9 Erros
 
 - **Bytes da linha.** O `feed()` nunca levanta exceção por causa deles: lixo, mensagens corrompidas, tipos desconhecidos e valores estranhos viram contadores.
-- **Taxa inválida.** O `set_rates()` levanta `ValueError` e não muda nada, nem o outro valor da mesma chamada. Os valores aceitos são os `int` 100, 50, 25, 20 e 10 para a IMU, e 1, 2, 5 e 10 para o OBD ([`PROTOCOLO.md` §4.2](PROTOCOLO.md)); um `25.0` também é recusado. Por isso, um valor inválido nunca chega ao cabo.
+- **Taxa inválida.** O `set_rates()` levanta `ValueError` e não muda nada, nem o outro valor da mesma chamada. Os valores aceitos são os `int` 100, 50, 25, 20 e 10 para a IMU, e 1, 2, 5 e 10 para o OBD ([`PROTOCOLO.md` §4.2](PROTOCOLO.md)); um `25.0` ou um `True` também são recusados. Por isso, um valor inválido nunca chega ao cabo.
 - **Versão desconhecida no STATUS.** O decodificador registra um erro uma vez por boot, no logger `esp32_decoder` (o nome do módulo), marca `incompatible` no `stats()` e não entrega nenhuma amostra daquele boot, que entram em `unsynced`. Os PINGs continuam.
   - Só o 1º byte do STATUS, a versão, é lido. Por isso um STATUS desses vale com qualquer tamanho, e o `stats()["esp32"]` fica `None`. Um STATUS sem nem esse byte conta em `corrupt`.
-  - Das outras mensagens daquele boot, só o cabeçalho é lido, porque o formato delas pode ter mudado: IMU e OBD somam em `unsynced`, e PONG, LOG e tipos desconhecidos são ignorados.
+  - As amostras de IMU e OBD daquele boot só somam em `unsynced`, sem ser lidas, porque o formato delas pode ter mudado. As outras mensagens seguem como sempre: o LOG vai para o logger `esp32`, e um tipo desconhecido soma em `unknown`.
+  - As duas fontes recebem o `{}` no 1º STATUS desse boot (§3.4), para que a Pi não fique com as amostras do boot anterior como atuais.
   - Um boot novo começa sem a marca.
 - **LOG do ESP32.** Vai para o logger `esp32` do `logging`: o nível 1 (erro) como `ERROR`, e o nível 2 (aviso) e qualquer outro como `WARNING`.
 - **Erros da porta** (`OSError` ao abrir, ler ou escrever) são do leitor.
@@ -362,7 +365,7 @@ python3 host/fake_esp32.py [--path /tmp/vguard-esp32] [opções]
   - envia IMU na taxa pedida, 25/s por padrão;
   - envia OBD com os 8 PIDs, só com a Pi presente, como o firmware: cerca de 1,2 s depois do 1º PING, e nada depois de 3 s sem PING;
   - responde a cada PING com um PONG;
-  - aplica o TAXAS a partir da próxima leitura da IMU ou da próxima amostra OBD. Cada campo vale sozinho, e uma TAXAS com algum valor fora da lista soma 1 em `rejeitadas`, uma vez por mensagem (o `rejeitadas` do [`PROTOCOLO.md` §3.1](PROTOCOLO.md) conta mensagens);
+  - aplica o TAXAS a partir da próxima leitura da IMU ou da próxima amostra OBD. Cada campo vale sozinho, e cada valor fora da lista soma 1 em `rejeitadas`, como diz o [`PROTOCOLO.md` §4.2](PROTOCOLO.md). Um TAXAS curto demais soma 1. Mensagens da Pi com CRC errado ou de tipo desconhecido são só ignoradas;
   - envia um LOG de aviso cada vez que a Pi aparece, no 1º PING depois de 3 s sem PING. Assim, o leitor que acabou de abrir a porta o vê; um LOG enviado só no início se perderia antes de qualquer leitor.
 - **Valores.** Seguem um percurso de 60 s em laço: parado, acelera até 60 km/h, anda e freia. Saem do modelo do carro do simulador (`host/car_model.py`, [`SIMULADOR.md` §3](SIMULADOR.md)), então a IMU e o OBD são coerentes.
 - **Opções para provocar cada caso:**

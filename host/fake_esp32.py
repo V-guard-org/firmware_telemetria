@@ -106,7 +106,7 @@ class FakeEsp32:
 
     def __init__(self, clock=time, rng=None, car_off_after=None, reboot_every=None, garbage=False,
                  drift_ppm=0.0):
-        """The options are those of main(), in seconds (DECODIFICADOR.md §4)."""
+        """The options of main() (DECODIFICADOR.md §4): seconds, a flag and ppm."""
         self._rng = rng or random.Random()
         self._clock = clock
         self._start = clock.monotonic()
@@ -115,11 +115,11 @@ class FakeEsp32:
         self._car_off_us = None if car_off_after is None else round(car_off_after * 1e6)
         self._reboot_us = None if reboot_every is None else round(reboot_every * 1e6)
         self.boot = None
-        self._boot(0, _RESET_POWER_ON)
+        self._start_boot(0, _RESET_POWER_ON)
         self._car = CarModel(self._rng)
         self._next_tick_us = 0
 
-    def _boot(self, at_us, reset_reason):
+    def _start_boot(self, at_us, reset_reason):
         """A new boot: all the ESP32 had in memory starts over, the car does not (PROTOCOLO.md §6.2)."""
         old = self.boot
         while self.boot == old:
@@ -168,9 +168,7 @@ class FakeEsp32:
             out += self._message(PONG, body)
         if now_us >= self._next_status_us:
             out += self._message(STATUS, self._status_body(self._t_us(now_us)))
-            self._next_status_us += STATUS_INTERVAL_US
-            if self._next_status_us <= now_us:  # the program stalled; no burst to catch up
-                self._next_status_us = now_us + STATUS_INTERVAL_US
+            self._next_status_us = _next_due(self._next_status_us, STATUS_INTERVAL_US, now_us)
         for msg_type, body in self._samples:
             out += self._message(msg_type, body)
         for at_us, text in self._logs:
@@ -178,9 +176,7 @@ class FakeEsp32:
         if self._next_garbage_us is not None and now_us >= self._next_garbage_us:
             # Last, so the PONG that just went out is never what the noise spoils.
             out += self._rng.randbytes(GARBAGE_BYTES)
-            self._next_garbage_us += GARBAGE_INTERVAL_US
-            if self._next_garbage_us <= now_us:     # the program stalled; no burst to catch up
-                self._next_garbage_us = now_us + GARBAGE_INTERVAL_US
+            self._next_garbage_us = _next_due(self._next_garbage_us, GARBAGE_INTERVAL_US, now_us)
         self._pongs.clear()
         self._samples.clear()
         self._logs.clear()
@@ -197,7 +193,7 @@ class FakeEsp32:
         while self._next_tick_us <= now_us:
             at_us = self._next_tick_us
             if self._reboot_us is not None and at_us - self._boot_at_us >= self._reboot_us:
-                self._boot(at_us, _RESET_WATCHDOG)
+                self._start_boot(at_us, _RESET_WATCHDOG)
             _drive(self._car, at_us / 1e6)
             self._car.step(TICK_US / 1e6)
             self._read_imu(at_us)
@@ -266,13 +262,18 @@ class FakeEsp32:
             self._next_obd_us += 1_000_000 // self._obd_rate     # a new rate counts from the next sample
 
     def _set_rates(self, body):
-        """Each field alone (PROTOCOLO.md §4.2); a value outside the list counts the TAXAS in rejeitadas."""
-        imu, obd = _TAXAS.unpack_from(body) if len(body) >= _TAXAS.size else (None, None)
+        """Each field alone: a value outside the list counts 1 in rejeitadas (PROTOCOLO.md §4.2)."""
+        if len(body) < _TAXAS.size:
+            self._counters[_REJECTED] += 1
+            return
+        imu, obd = _TAXAS.unpack_from(body)
         if imu in IMU_RATES:
             self._imu_rate = imu
+        else:
+            self._counters[_REJECTED] += 1
         if obd in OBD_RATES:
             self._obd_rate = obd
-        if imu not in IMU_RATES or obd not in OBD_RATES:
+        else:
             self._counters[_REJECTED] += 1
 
     def _count_requests(self, count, answered=True):
@@ -291,6 +292,12 @@ class FakeEsp32:
         data = encode_message(msg_type, self.boot, self._seq, body)
         self._seq = (self._seq + 1) & 0xFFFF
         return data
+
+
+def _next_due(due_us, interval_us, now_us):
+    """The next instant of something done every interval; if the program stalled, no burst to catch up."""
+    due_us += interval_us
+    return due_us if due_us > now_us else now_us + interval_us
 
 
 def _drive(car, t):

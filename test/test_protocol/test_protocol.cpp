@@ -72,20 +72,20 @@ static void test_ping_example_encodes_byte_by_byte() {
 }
 
 // Passa os bytes ao leitor e devolve o resultado do último byte.
-static FrameReader::Result push_all(FrameReader& reader, const uint8_t* data, size_t len) {
-    FrameReader::Result result = FrameReader::Result::kPending;
+static MessageReader::Result push_all(MessageReader& reader, const uint8_t* data, size_t len) {
+    MessageReader::Result result = MessageReader::Result::kPending;
     for (size_t i = 0; i < len; ++i) {
         result = reader.push(data[i]);
         if (i + 1 < len) {
-            TEST_ASSERT_EQUAL(FrameReader::Result::kPending, result);
+            TEST_ASSERT_EQUAL(MessageReader::Result::kPending, result);
         }
     }
     return result;
 }
 
 static void test_ping_example_decodes() {
-    FrameReader reader;
-    TEST_ASSERT_EQUAL(FrameReader::Result::kMessage,
+    MessageReader reader;
+    TEST_ASSERT_EQUAL(MessageReader::Result::kMessage,
                       push_all(reader, kPingWire, sizeof(kPingWire)));
 
     const Message& msg = reader.message();
@@ -100,8 +100,8 @@ static void test_imu_example_decodes_back_to_its_body() {
     const uint8_t body[] = {0x60, 0xE3, 0x16, 0x00, 0x00, 0x00, 0x00, 0x00, 0xC2, 0xFF, 0x0A,
                             0x00, 0xD5, 0x03, 0x05, 0x00, 0xF4, 0xFF, 0x7B, 0x00, 0xB0, 0xFF,
                             0x19, 0x00, 0x10, 0x04, 0x0B, 0x00, 0xEC, 0xFF, 0x96, 0x00};
-    FrameReader reader;
-    TEST_ASSERT_EQUAL(FrameReader::Result::kMessage, push_all(reader, kImuWire, sizeof(kImuWire)));
+    MessageReader reader;
+    TEST_ASSERT_EQUAL(MessageReader::Result::kMessage, push_all(reader, kImuWire, sizeof(kImuWire)));
 
     const Message& msg = reader.message();
     TEST_ASSERT_EQUAL(MessageType::kImu, msg.type);
@@ -115,43 +115,43 @@ static void test_wrong_crc_is_rejected() {
     uint8_t wire[sizeof(kPingWire)];
     std::memcpy(wire, kPingWire, sizeof(wire));
     wire[6] ^= 0x01;  // um bit do CRC
-    FrameReader reader;
-    TEST_ASSERT_EQUAL(FrameReader::Result::kRejected, push_all(reader, wire, sizeof(wire)));
+    MessageReader reader;
+    TEST_ASSERT_EQUAL(MessageReader::Result::kRejected, push_all(reader, wire, sizeof(wire)));
 }
 
 static void test_message_shorter_than_header_and_crc_is_rejected() {
     // COBS de 81 00 00 07 00 1A: seis bytes, um a menos que o mínimo.
     const uint8_t wire[] = {0x02, 0x81, 0x01, 0x02, 0x07, 0x02, 0x1A, 0x00};
-    FrameReader reader;
-    TEST_ASSERT_EQUAL(FrameReader::Result::kRejected, push_all(reader, wire, sizeof(wire)));
+    MessageReader reader;
+    TEST_ASSERT_EQUAL(MessageReader::Result::kRejected, push_all(reader, wire, sizeof(wire)));
 }
 
 static void test_invalid_cobs_is_rejected() {
     // O código 0x09 promete mais bytes do que chegaram antes do 0x00.
     const uint8_t wire[] = {0x09, 0x81, 0x01, 0x02, 0x07, 0x02, 0x1A, 0x01, 0x00};
-    FrameReader reader;
-    TEST_ASSERT_EQUAL(FrameReader::Result::kRejected, push_all(reader, wire, sizeof(wire)));
+    MessageReader reader;
+    TEST_ASSERT_EQUAL(MessageReader::Result::kRejected, push_all(reader, wire, sizeof(wire)));
 }
 
-static void test_empty_frames_are_ignored() {
-    FrameReader reader;
-    TEST_ASSERT_EQUAL(FrameReader::Result::kPending, reader.push(0x00));
-    TEST_ASSERT_EQUAL(FrameReader::Result::kPending, reader.push(0x00));
-    TEST_ASSERT_EQUAL(FrameReader::Result::kMessage,
+static void test_lone_zero_bytes_are_ignored() {
+    MessageReader reader;
+    TEST_ASSERT_EQUAL(MessageReader::Result::kPending, reader.push(0x00));
+    TEST_ASSERT_EQUAL(MessageReader::Result::kPending, reader.push(0x00));
+    TEST_ASSERT_EQUAL(MessageReader::Result::kMessage,
                       push_all(reader, kPingWire, sizeof(kPingWire)));
 }
 
 static void test_garbage_without_zero_is_rejected_once_and_the_next_message_is_read() {
-    FrameReader reader;
+    MessageReader reader;
     int rejected = 0;
     for (int i = 0; i < 1000; ++i) {
-        if (reader.push(0x55) == FrameReader::Result::kRejected) {
+        if (reader.push(0x55) == MessageReader::Result::kRejected) {
             ++rejected;
         }
     }
-    TEST_ASSERT_EQUAL(FrameReader::Result::kRejected, reader.push(0x00));
+    TEST_ASSERT_EQUAL(MessageReader::Result::kRejected, reader.push(0x00));
     TEST_ASSERT_EQUAL(0, rejected);
-    TEST_ASSERT_EQUAL(FrameReader::Result::kMessage,
+    TEST_ASSERT_EQUAL(MessageReader::Result::kMessage,
                       push_all(reader, kPingWire, sizeof(kPingWire)));
     TEST_ASSERT_EQUAL(7, reader.message().seq);
 }
@@ -166,19 +166,19 @@ static void test_the_longest_message_round_trips() {
     const size_t len = encode_message(MessageType::kLog, 0x1234, 0x0101, body, kMaxBody, wire);
     TEST_ASSERT_EQUAL(kMaxWire, len);
 
-    FrameReader reader;
-    TEST_ASSERT_EQUAL(FrameReader::Result::kMessage, push_all(reader, wire, len));
+    MessageReader reader;
+    TEST_ASSERT_EQUAL(MessageReader::Result::kMessage, push_all(reader, wire, len));
     TEST_ASSERT_EQUAL(kMaxBody, reader.message().body_len);
     TEST_ASSERT_EQUAL_HEX8_ARRAY(body, reader.message().body, kMaxBody);
 }
 
 static void test_more_than_255_bytes_after_cobs_is_rejected() {
     // 257 códigos 0x01 viram 256 zeros: cabe no cabo, mas passa do tamanho máximo.
-    FrameReader reader;
+    MessageReader reader;
     for (size_t i = 0; i < kMaxEncoded; ++i) {
-        TEST_ASSERT_EQUAL(FrameReader::Result::kPending, reader.push(0x01));
+        TEST_ASSERT_EQUAL(MessageReader::Result::kPending, reader.push(0x01));
     }
-    TEST_ASSERT_EQUAL(FrameReader::Result::kRejected, reader.push(0x00));
+    TEST_ASSERT_EQUAL(MessageReader::Result::kRejected, reader.push(0x00));
 }
 
 int main() {
@@ -192,7 +192,7 @@ int main() {
     RUN_TEST(test_wrong_crc_is_rejected);
     RUN_TEST(test_message_shorter_than_header_and_crc_is_rejected);
     RUN_TEST(test_invalid_cobs_is_rejected);
-    RUN_TEST(test_empty_frames_are_ignored);
+    RUN_TEST(test_lone_zero_bytes_are_ignored);
     RUN_TEST(test_garbage_without_zero_is_rejected_once_and_the_next_message_is_read);
     RUN_TEST(test_the_longest_message_round_trips);
     RUN_TEST(test_more_than_255_bytes_after_cobs_is_rejected);

@@ -58,7 +58,7 @@ static void test_status_at_start_has_every_field() {
     FakeLink link;
     FakeImu imu;
     FakeSystem sys;
-    sys.heap_min_ = 123'456;
+    sys.min_free_heap = 123'456;
     Harness h(can, link, imu, sys, {0xBEEF, ResetReason::kWatchdog, Platform::kNotebook, "0.1.0-teste"});
 
     h.start(1'234);
@@ -173,6 +173,27 @@ static void test_pong_goes_ahead_of_status_and_seq_is_given_when_written() {
     }
 }
 
+static void test_output_held_by_a_full_uart_is_retried_within_10_ms() {
+    FakeCan can;
+    FakeLink link;
+    FakeImu imu;
+    FakeSystem sys;
+    Harness h(can, link, imu, sys);
+
+    link.set_stuck(true);
+    h.start(0);
+    h.ping(3, 200'000);                // o PONG fica na fila
+    TEST_ASSERT_EQUAL_UINT64(210'000, h.core().next_deadline_us());
+
+    link.set_stuck(false);             // a UART voltou a aceitar, sem evento nenhum
+    h.run_until(210'000);
+
+    const auto pongs = link.messages_of(MessageType::kPong);
+    TEST_ASSERT_EQUAL(1, pongs.size());
+    TEST_ASSERT_EQUAL_UINT64(200'000, parse_pong(pongs[0]).t_us);
+    TEST_ASSERT_EQUAL_UINT64(1'000'000, h.core().next_deadline_us());  // fila vazia
+}
+
 static void test_full_queue_drops_the_oldest_status_without_spending_seq() {
     FakeCan can;
     FakeLink link;
@@ -184,19 +205,19 @@ static void test_full_queue_drops_the_oldest_status_without_spending_seq() {
     h.start(0);
     h.run_until(20'500'000);           // 21 STATUS, de 0 a 20 s, numa fila de 16
     link.set_stuck(false);
-    h.run_until(21'000'000);           // o STATUS de 21 s ainda descarta o de 5 s
+    h.run_until(20'510'000);           // a nova tentativa de escrita esvazia a fila
 
     const auto sent = link.messages();
     TEST_ASSERT_EQUAL(16, sent.size());
-    TEST_ASSERT_EQUAL_UINT64(6'000'000, StatusView::parse(sent.front().body).t_us);
+    TEST_ASSERT_EQUAL_UINT64(5'000'000, StatusView::parse(sent.front().body).t_us);
     for (size_t i = 0; i < sent.size(); ++i) {
         TEST_ASSERT_EQUAL(i, sent[i].seq);  // as descartadas não deixam lacunas
     }
-    // O de 21 s foi montado antes de entrar na fila, quando 5 já tinham saído.
-    TEST_ASSERT_EQUAL(5, StatusView::parse(sent.back().body).dropped);
+    // O de 20 s foi montado antes de entrar na fila, quando 4 já tinham saído.
+    TEST_ASSERT_EQUAL(4, StatusView::parse(sent.back().body).dropped);
 
-    h.run_until(22'000'000);
-    TEST_ASSERT_EQUAL(6, h.last_status().dropped);
+    h.run_until(21'000'000);
+    TEST_ASSERT_EQUAL(5, h.last_status().dropped);
 }
 
 static void test_wrong_crc_and_unknown_types_count_as_rejected() {
@@ -251,6 +272,7 @@ int main() {
     RUN_TEST(test_status_called_late_goes_out_once_and_restarts_the_rhythm);
     RUN_TEST(test_ping_in_pieces_is_answered_with_the_instant_of_the_last_piece);
     RUN_TEST(test_pong_goes_ahead_of_status_and_seq_is_given_when_written);
+    RUN_TEST(test_output_held_by_a_full_uart_is_retried_within_10_ms);
     RUN_TEST(test_full_queue_drops_the_oldest_status_without_spending_seq);
     RUN_TEST(test_wrong_crc_and_unknown_types_count_as_rejected);
     RUN_TEST(test_core_never_allocates_memory);

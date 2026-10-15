@@ -11,19 +11,6 @@
 
 namespace vguard {
 
-enum class Platform : uint8_t { kNotebook = 0, kEsp32 = 1 };
-
-// Motivo do último reinício, nos códigos do protocolo (PROTOCOLO.md §3.1).
-enum class ResetReason : uint8_t {
-    kUnknown = 0,
-    kPowerOn = 1,
-    kExternalPin = 2,
-    kSoftware = 3,
-    kPanic = 4,
-    kWatchdog = 5,
-    kBrownout = 6,
-};
-
 enum class LogLevel : uint8_t { kError = 1, kWarning = 2 };  // o nível da mensagem LOG
 
 // O que é fixo durante o boot.
@@ -57,7 +44,7 @@ private:
     void on_link_message(const Message& msg, uint64_t t_us);
     void send_status(uint64_t t_us);
     void send(MessageType type, const uint8_t* body, size_t len);
-    void flush();
+    void flush(uint64_t now_us);
 
     LinkPort& link_;
     ImuPort& imu_;
@@ -68,11 +55,12 @@ private:
     Platform platform_;
     char firmware_[kMaxFirmwareText + 1];
 
-    FrameReader link_reader_;
+    MessageReader link_reader_;
     OutputQueue queue_;
     uint16_t tx_seq_ = 0;
     uint32_t counters_[kCounterCount] = {};
     uint64_t next_status_us_ = 0;
+    uint64_t retry_write_us_ = UINT64_MAX;  // só enquanto a UART recusa a fila
 };
 
 }  // namespace vguard

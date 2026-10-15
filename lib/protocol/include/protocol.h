@@ -17,7 +17,7 @@ enum class MessageType : uint8_t {
     kLog = 0x05,
     kPing = 0x81,
     kTaxas = 0x82,
-    kImuSim = 0x83,
+    // A IMU_SIM (0x83) é da simulação: fica em lib/imu_sim/, para sair inteira com ela (ADR-0003).
 };
 
 constexpr size_t kHeaderSize = 5;                            // tipo, boot e seq (§2.1)
@@ -49,6 +49,20 @@ size_t build_pong_body(uint16_t seq_ping, uint64_t t_us, uint8_t* out);
 // STATUS (§3.1).
 constexpr uint8_t kProtocolVersion = 1;
 constexpr size_t kMaxFirmwareText = 32;
+constexpr uint8_t kSourceImuSimulated = 0x01;  // bit 0 de fontes
+
+enum class Platform : uint8_t { kNotebook = 0, kEsp32 = 1 };
+
+// Motivo do último reinício, nos códigos do protocolo, não nos do ESP-IDF.
+enum class ResetReason : uint8_t {
+    kUnknown = 0,
+    kPowerOn = 1,
+    kExternalPin = 2,
+    kSoftware = 3,
+    kPanic = 4,
+    kWatchdog = 5,
+    kBrownout = 6,
+};
 
 // Os contadores do STATUS, na ordem do protocolo. Somam desde o boot e nunca zeram.
 enum Counter : size_t {
@@ -66,9 +80,9 @@ enum Counter : size_t {
 
 struct StatusBody {
     uint64_t t_us;
-    uint8_t platform;      // 0 notebook, 1 ESP32
-    uint8_t sources;       // bit 0: IMU simulada
-    uint8_t reset_reason;
+    Platform platform;
+    uint8_t sources;       // kSourceImuSimulated
+    ResetReason reset_reason;
     uint8_t imu_rate;
     uint8_t obd_rate;
     uint8_t imu_state;     // 0 ok, 1 falha
@@ -128,6 +142,7 @@ private:
     };
 
     static constexpr size_t kNone = kCapacity;
+    static bool leaves_before(const Slot& a, const Slot& b);
     size_t front_index() const;
     size_t victim_index() const;
 
@@ -135,7 +150,7 @@ private:
     uint32_t next_order_ = 0;
 };
 
-// Uma mensagem recebida e conferida. O corpo aponta para dentro do FrameReader.
+// Uma mensagem recebida e conferida. O corpo aponta para dentro do MessageReader.
 struct Message {
     MessageType type;  // pode ser um código que ninguém conhece
     uint16_t boot;
@@ -147,12 +162,13 @@ struct Message {
 // Remonta as mensagens que chegam, byte a byte, e confere o COBS, o tamanho e o CRC (§2).
 // Depois de lixo na linha, ou de começar no meio de uma mensagem, ele se realinha no
 // próximo 0x00.
-class FrameReader {
+class MessageReader {
 public:
     enum class Result : uint8_t {
         kPending,   // no meio de uma mensagem, ou um 0x00 sem nada antes, que é ignorado
         kMessage,   // chegou uma mensagem inteira: message() vale até o próximo kMessage
-        kRejected,  // COBS inválido, menos de 7 bytes, CRC errado ou mais de 257 bytes sem 0x00
+        kRejected,  // COBS inválido, menos de 7 ou mais de 255 bytes, CRC errado, ou mais de
+                    // 257 bytes no cabo sem 0x00
     };
 
     Result push(uint8_t byte);

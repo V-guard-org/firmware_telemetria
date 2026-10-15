@@ -15,11 +15,11 @@ namespace vguard::native {
 PtyLink::~PtyLink() {
     // Só apaga o atalho se ele ainda aponta para este pty: outro programa pode ter
     // criado o seu por cima.
-    if (!link_path_.empty()) {
+    if (!symlink_path_.empty()) {
         char target[256] = {};
-        const ssize_t n = readlink(link_path_.c_str(), target, sizeof(target) - 1);
+        const ssize_t n = readlink(symlink_path_.c_str(), target, sizeof(target) - 1);
         if (n > 0 && pty_name_ == target) {
-            unlink(link_path_.c_str());
+            unlink(symlink_path_.c_str());
         }
     }
     if (slave_ >= 0) {
@@ -30,10 +30,10 @@ PtyLink::~PtyLink() {
     }
 }
 
-bool PtyLink::open(const std::string& link_path, std::string& error) {
+bool PtyLink::open(const std::string& symlink_path, std::string& error) {
     struct stat st {};
-    if (lstat(link_path.c_str(), &st) == 0 && !S_ISLNK(st.st_mode)) {
-        error = link_path + " existe e não é um atalho; escolha outro --path";
+    if (lstat(symlink_path.c_str(), &st) == 0 && !S_ISLNK(st.st_mode)) {
+        error = symlink_path + " exists and is not a symlink; choose another --path";
         return false;
     }
 
@@ -55,13 +55,13 @@ bool PtyLink::open(const std::string& link_path, std::string& error) {
     fcntl(master_, F_SETFL, fcntl(master_, F_GETFL) | O_NONBLOCK);
 
     // Cria ao lado e troca de uma vez, por cima de um atalho deixado por outra execução.
-    const std::string temporary = link_path + "." + std::to_string(getpid());
-    if (symlink(name, temporary.c_str()) != 0 || rename(temporary.c_str(), link_path.c_str()) != 0) {
-        error = "atalho " + link_path + ": " + std::strerror(errno);
+    const std::string temporary = symlink_path + "." + std::to_string(getpid());
+    if (symlink(name, temporary.c_str()) != 0 || rename(temporary.c_str(), symlink_path.c_str()) != 0) {
+        error = "symlink " + symlink_path + ": " + std::strerror(errno);
         unlink(temporary.c_str());
         return false;
     }
-    link_path_ = link_path;
+    symlink_path_ = symlink_path;
     return true;
 }
 

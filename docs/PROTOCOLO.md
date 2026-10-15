@@ -117,7 +117,7 @@ O corpo tem de 68 a 100 bytes, e a mensagem inteira, no máximo 107. O texto do 
 | # | Contador | O que conta |
 |---|---|---|
 | 0 | `descartadas` | Mensagens descartadas no ESP32 com a fila de saída cheia, LOGs acima do limite incluídos |
-| 1 | `rejeitadas` | Mensagens da Pi rejeitadas pela moldura (§2: COBS inválido, curtas demais ou CRC errado), de tipo desconhecido ou com valor fora da lista |
+| 1 | `rejeitadas` | Mensagens da Pi rejeitadas pela moldura (§2: COBS inválido, menos de 7 ou mais de 255 bytes depois do COBS, CRC errado, ou mais de 257 bytes sem um `0x00`), de tipo desconhecido ou com valor fora da lista |
 | 2 | `falhas_imu` | Leituras da IMU que falharam |
 | 3 | `obd_enviadas` | Requisições OBD transmitidas no CAN |
 | 4 | `obd_respondidas` | Requisições que receberam resposta |

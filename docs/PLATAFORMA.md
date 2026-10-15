@@ -74,7 +74,8 @@ Depois de cada chamada, o núcleo informa o seu **próximo prazo**, o instante m
 - o prazo de resposta e o intervalo mínimo entre requisições (50 ms);
 - o próximo STATUS (1 s);
 - a Pi ausente (3 s sem PING);
-- as esperas do OBD (2 s e 10 s) e a nova tentativa da IMU (1 s).
+- as esperas do OBD (2 s e 10 s) e a nova tentativa da IMU (1 s);
+- a nova tentativa de escrita (10 ms), só enquanto a UART recusa a próxima mensagem da fila. Nenhum evento avisa quando a UART volta a aceitar, então o núcleo tenta de novo (emenda do #19).
 
 A plataforma espera até esse prazo ou até o próximo evento, o que vier primeiro.
 
@@ -219,7 +220,7 @@ Com uma fila só, os eventos chegam ao núcleo na ordem em que aconteceram, e os
 ### 4.2 Notebook
 
 - **Laço.** Uma única thread faz `poll()` no socket do `vcan0` e no pty, com o próximo prazo do núcleo como limite de espera.
-- **Partida.** `program --can vcan0`. O firmware cria o pty e um atalho de caminho fixo, `/tmp/vguard-esp32`, que o decodificador e o simulador abrem. A opção `--path` troca o caminho do atalho, como no ESP32 falso; o teste de ponta a ponta a usa para não disputar o atalho com um simulador aberto. Na fase 2, os mesmos programas abrem a `/dev/vguard-esp32` no lugar dele ([`BANCADA.md` §5](BANCADA.md)). O simulador do PC pode iniciar o firmware como processo filho, para reiniciá-lo por um botão ([`SIMULADOR.md` §4](SIMULADOR.md)).
+- **Partida.** `program --can vcan0`. O firmware cria o pty e um atalho de caminho fixo, `/tmp/vguard-esp32`, que o decodificador e o simulador abrem. A opção `--path` troca o caminho do atalho, como no ESP32 falso; o teste de ponta a ponta a usa para não disputar o atalho com um simulador aberto. Até a porta CAN do notebook chegar (#25), o `--can` é aceito e ignorado, com um aviso no terminal. Na fase 2, os mesmos programas abrem a `/dev/vguard-esp32` no lugar dele ([`BANCADA.md` §5](BANCADA.md)). O simulador do PC pode iniciar o firmware como processo filho, para reiniciá-lo por um botão ([`SIMULADOR.md` §4](SIMULADOR.md)).
 - **`BootInfo`.** O `boot` é sorteado, o motivo de reinício é 1 (energia) e a `plataforma` é 0.
 - **Logs.** Saem também no terminal.
 - **Sem leitor.** O firmware fica com o seu lado do pty aberto, para que o `poll()` não acorde sem parar quando ninguém lê. O pty guarda cerca de 17 KB, o adaptador guarda mais 4 KB, e depois disso a fila do núcleo descarta (§3.3).

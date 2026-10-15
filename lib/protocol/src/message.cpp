@@ -2,6 +2,8 @@
 
 #include <cstring>
 
+#include "byte_writer.h"
+
 namespace vguard {
 namespace {
 
@@ -34,18 +36,16 @@ size_t cobs_encode(const uint8_t* in, size_t len, uint8_t* out) {
 size_t encode_message(MessageType type, uint16_t boot, uint16_t seq, const uint8_t* body,
                       size_t body_len, uint8_t* out) {
     uint8_t raw[kMaxMessage];
-    raw[0] = static_cast<uint8_t>(type);
-    raw[1] = static_cast<uint8_t>(boot);
-    raw[2] = static_cast<uint8_t>(boot >> 8);
-    raw[3] = static_cast<uint8_t>(seq);
-    raw[4] = static_cast<uint8_t>(seq >> 8);
+    ByteWriter w(raw);
+    w.u8(static_cast<uint8_t>(type));
+    w.u16(boot);
+    w.u16(seq);
     if (body_len > 0) {
         std::memcpy(raw + kHeaderSize, body, body_len);
     }
     const size_t len = kHeaderSize + body_len;
-    const uint16_t crc = crc16(raw, len);
-    raw[len] = static_cast<uint8_t>(crc);
-    raw[len + 1] = static_cast<uint8_t>(crc >> 8);
+    ByteWriter crc(raw + len);
+    crc.u16(crc16(raw, len));
     const size_t encoded = cobs_encode(raw, len + kCrcSize, out);
     out[encoded] = 0x00;
     return encoded + 1;

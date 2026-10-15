@@ -15,9 +15,9 @@ size_t build_status_body(const StatusBody& status, uint8_t* out) {
     ByteWriter w(out);
     w.u8(kProtocolVersion);
     w.u64(status.t_us);
-    w.u8(status.platform);
+    w.u8(static_cast<uint8_t>(status.platform));
     w.u8(status.sources);
-    w.u8(status.reset_reason);
+    w.u8(static_cast<uint8_t>(status.reset_reason));
     w.u8(status.imu_rate);
     w.u8(status.obd_rate);
     w.u8(status.imu_state);

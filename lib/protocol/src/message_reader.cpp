@@ -30,7 +30,7 @@ bool cobs_decode(const uint8_t* in, size_t len, uint8_t* out, size_t* out_len) {
 
 }  // namespace
 
-FrameReader::Result FrameReader::push(uint8_t byte) {
+MessageReader::Result MessageReader::push(uint8_t byte) {
     if (byte == 0x00) {
         return finish();
     }
@@ -42,7 +42,7 @@ FrameReader::Result FrameReader::push(uint8_t byte) {
     return Result::kPending;
 }
 
-FrameReader::Result FrameReader::finish() {
+MessageReader::Result MessageReader::finish() {
     const size_t len = encoded_len_;
     const bool overflowed = overflowed_;
     encoded_len_ = 0;

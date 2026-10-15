@@ -24,7 +24,6 @@ public:
         : link_(link), core_(can, link, imu, system, boot) {}
 
     Core& core() { return core_; }
-    uint64_t now() const { return now_us_; }
 
     void start(uint64_t t_us = 0) {
         now_us_ = t_us;

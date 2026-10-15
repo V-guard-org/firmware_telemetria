@@ -59,16 +59,17 @@ void OutputQueue::pop() {
     }
 }
 
+// a sai antes de b: classe que sai antes, ou a mesma classe e chegou antes.
+bool OutputQueue::leaves_before(const Slot& a, const Slot& b) {
+    const int ra = rank(a.entry.type);
+    const int rb = rank(b.entry.type);
+    return ra < rb || (ra == rb && a.order < b.order);
+}
+
 size_t OutputQueue::front_index() const {
     size_t best = kNone;
     for (size_t i = 0; i < kCapacity; ++i) {
-        const Slot& slot = slots_[i];
-        if (!slot.used) {
-            continue;
-        }
-        if (best == kNone || rank(slot.entry.type) < rank(slots_[best].entry.type) ||
-            (rank(slot.entry.type) == rank(slots_[best].entry.type) &&
-             slot.order < slots_[best].order)) {
+        if (slots_[i].used && (best == kNone || leaves_before(slots_[i], slots_[best]))) {
             best = i;
         }
     }
@@ -77,15 +78,16 @@ size_t OutputQueue::front_index() const {
 
 // A mais antiga da classe que sai por último. Só é chamada com a fila cheia.
 size_t OutputQueue::victim_index() const {
-    size_t worst = 0;
+    size_t victim = 0;
     for (size_t i = 1; i < kCapacity; ++i) {
-        const int r = rank(slots_[i].entry.type);
-        const int worst_rank = rank(slots_[worst].entry.type);
-        if (r > worst_rank || (r == worst_rank && slots_[i].order < slots_[worst].order)) {
-            worst = i;
+        const Slot& slot = slots_[i];
+        const Slot& current = slots_[victim];
+        if (rank(slot.entry.type) > rank(current.entry.type) ||
+            (rank(slot.entry.type) == rank(current.entry.type) && slot.order < current.order)) {
+            victim = i;
         }
     }
-    return worst;
+    return victim;
 }
 
 }  // namespace vguard

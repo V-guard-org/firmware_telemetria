@@ -1,7 +1,7 @@
 // Firmware nativo da fase 1 (docs/PLATAFORMA.md §4.2): o núcleo num laço com ppoll() no
 // pty, com o próximo prazo do núcleo como limite de espera.
 //
-//   pio run -e native && .pio/build/native/program [--path /tmp/vguard-esp32]
+//   pio run -e native && .pio/build/native/program [--can vcan0] [--path /tmp/vguard-esp32]
 #include <poll.h>
 #include <signal.h>
 #include <time.h>
@@ -79,7 +79,8 @@ void log_line(const Clock& clock, const char* text) {
 }
 
 int usage(const char* program) {
-    std::fprintf(stderr, "uso: %s [--path CAMINHO]  (padrão %s)\n", program, kDefaultPath);
+    std::fprintf(stderr, "usage: %s [--can IFACE] [--path PATH]  (default path %s)\n", program,
+                 kDefaultPath);
     return 2;
 }
 
@@ -87,10 +88,13 @@ int usage(const char* program) {
 
 int main(int argc, char** argv) {
     std::string path = kDefaultPath;
+    std::string can_iface;
     for (int i = 1; i < argc; ++i) {
         const std::string arg = argv[i];
         if (arg == "--path" && i + 1 < argc) {
             path = argv[++i];
+        } else if (arg == "--can" && i + 1 < argc) {
+            can_iface = argv[++i];  // aceito desde já, para o simulador iniciar o firmware como no §4.2
         } else {
             return usage(argv[0]);
         }
@@ -126,9 +130,13 @@ int main(int argc, char** argv) {
     Core core(can, link, imu, system, boot);
 
     char line[256];
-    std::snprintf(line, sizeof(line), "firmware nativo %s em %s -> %s, boot 0x%04X",
+    std::snprintf(line, sizeof(line), "native firmware %s on %s -> %s, boot 0x%04X",
                   VGUARD_FIRMWARE_VERSION, path.c_str(), link.pty_name().c_str(), boot.boot);
     log_line(clock, line);
+    if (!can_iface.empty()) {
+        std::snprintf(line, sizeof(line), "--can %s ignored: no CAN port yet (#25)", can_iface.c_str());
+        log_line(clock, line);
+    }
 
     core.start(clock.now_us());
     int status = 0;
@@ -151,7 +159,7 @@ int main(int argc, char** argv) {
         }
         const uint64_t t_us = clock.now_us();
         if (fd.revents & (POLLERR | POLLHUP | POLLNVAL)) {
-            log_line(clock, "o pty fechou");
+            log_line(clock, "the pty closed");
             status = 1;
             break;
         }
@@ -169,6 +177,6 @@ int main(int argc, char** argv) {
             core.on_deadline(t_us);
         }
     }
-    log_line(clock, "firmware nativo encerrado");
+    log_line(clock, "native firmware stopped");
     return status;
 }

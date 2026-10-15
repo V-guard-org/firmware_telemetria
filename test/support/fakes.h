@@ -12,17 +12,13 @@
 
 namespace vguard::testing {
 
-// A porta CAN que só anota o que o núcleo pediu. O OBD chega no ticket do caminho feliz.
+// A porta CAN que ainda não faz nada: o OBD chega no ticket do caminho feliz (#25).
 class FakeCan : public CanPort {
 public:
-    void listen() override { ++listen_calls; }
-    void talk() override { ++talk_calls; }
-    void transmit(const CanFrame&) override { ++transmitted; }
+    void listen() override {}
+    void talk() override {}
+    void transmit(const CanFrame&) override {}
     ListenSummary listen_summary() const override { return {}; }
-
-    int listen_calls = 0;
-    int talk_calls = 0;
-    int transmitted = 0;
 };
 
 // Uma mensagem que saiu pela UART, já conferida e com o corpo copiado.
@@ -50,12 +46,12 @@ public:
     // Todas as mensagens escritas até agora. Uma mensagem que não confere falha o teste.
     std::vector<SentMessage> messages() const {
         std::vector<SentMessage> out;
-        FrameReader reader;
+        MessageReader reader;
         for (size_t i = 0; i < len_; ++i) {
             const auto result = reader.push(bytes_[i]);
-            TEST_ASSERT_NOT_EQUAL_MESSAGE(FrameReader::Result::kRejected, result,
+            TEST_ASSERT_NOT_EQUAL_MESSAGE(MessageReader::Result::kRejected, result,
                                           "o núcleo escreveu uma mensagem inválida");
-            if (result == FrameReader::Result::kMessage) {
+            if (result == MessageReader::Result::kMessage) {
                 const Message& m = reader.message();
                 out.push_back({m.type, m.boot, m.seq,
                                std::vector<uint8_t>(m.body, m.body + m.body_len)});
@@ -85,16 +81,16 @@ class FakeImu : public ImuPort {
 public:
     bool read(ImuReading&) override { return false; }
     bool restart() override { return true; }
-    bool simulated() const override { return simulated_; }
+    bool simulated() const override { return is_simulated; }
 
-    bool simulated_ = true;
+    bool is_simulated = true;
 };
 
 class FakeSystem : public SystemPort {
 public:
-    uint32_t heap_min() const override { return heap_min_; }
+    uint32_t heap_min() const override { return min_free_heap; }
 
-    uint32_t heap_min_ = 0;
+    uint32_t min_free_heap = 0;
 };
 
 }  // namespace vguard::testing

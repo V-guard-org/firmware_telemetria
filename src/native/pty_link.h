@@ -20,7 +20,7 @@ public:
     ~PtyLink();
 
     // Cria o pty e o atalho. Em caso de erro, devolve false e escreve o motivo em error.
-    bool open(const std::string& link_path, std::string& error);
+    bool open(const std::string& symlink_path, std::string& error);
 
     int fd() const { return master_; }
     const std::string& pty_name() const { return pty_name_; }
@@ -40,7 +40,7 @@ private:
     int master_ = -1;
     int slave_ = -1;
     std::string pty_name_;
-    std::string link_path_;
+    std::string symlink_path_;  // o atalho
     uint8_t pending_[4096];
     size_t pending_len_ = 0;
 };

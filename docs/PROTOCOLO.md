@@ -117,7 +117,7 @@ O corpo tem de 68 a 100 bytes, e a mensagem inteira, no máximo 107. O texto do 
 | # | Contador | O que conta |
 |---|---|---|
 | 0 | `descartadas` | Mensagens descartadas no ESP32 com a fila de saída cheia, LOGs acima do limite incluídos |
-| 1 | `rejeitadas` | Mensagens da Pi com CRC errado, tipo desconhecido ou valor fora da lista |
+| 1 | `rejeitadas` | Mensagens da Pi rejeitadas pela moldura (§2: COBS inválido, menos de 7 ou mais de 255 bytes depois do COBS, CRC errado, ou mais de 257 bytes sem um `0x00`), de tipo desconhecido ou com valor fora da lista |
 | 2 | `falhas_imu` | Leituras da IMU que falharam |
 | 3 | `obd_enviadas` | Requisições OBD transmitidas no CAN |
 | 4 | `obd_respondidas` | Requisições que receberam resposta |
@@ -210,7 +210,7 @@ O PONG passa na frente de tudo na fila de saída (§6.5).
 
 ### 4.1 PING (`0x81`)
 
-O corpo é vazio: o `seq` do cabeçalho serve de identificador, e o ESP32 o devolve no PONG.
+O corpo é vazio: o `seq` do cabeçalho serve de identificador, e o ESP32 o devolve no PONG. Se um PING chegar com corpo, o ESP32 o ignora e responde igual.
 
 ### 4.2 TAXAS (`0x82`)
 
@@ -326,6 +326,12 @@ O número de pares e o tamanho da janela estão no [`DECODIFICADOR.md` §3.8](DE
 ### 6.5 Fila de saída do ESP32
 
 A ordem de saída é: PONG, depois STATUS, depois IMU e OBD na ordem em que foram geradas, e por último LOG. Com a fila cheia, sai primeiro o LOG mais antigo e depois a amostra mais antiga. Cada descarte soma em `descartadas`.
+
+*Emenda do #19.* A regra segue na mesma ordem:
+- sem LOG nem amostra na fila, sai o STATUS mais antigo, e só depois o PONG mais antigo;
+- a mensagem nova também conta: com a fila cheia de amostras, um LOG novo é o descartado.
+
+Isso acontece quando a Pi para de ler por muito tempo. A fila guarda 16 mensagens, e um STATUS mais novo traz todos os contadores do anterior.
 
 ### 6.6 Onde cada perda aparece
 

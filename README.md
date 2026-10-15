@@ -14,6 +14,7 @@ O planejamento foi concluído em 13/10/2026. O desenvolvimento começa pela fase
 | Máquinas de estado (boot, OBD no CAN e IMU) | [`docs/MAQUINAS-DE-ESTADO.md`](docs/MAQUINAS-DE-ESTADO.md) |
 | Núcleo portátil e camada de plataforma (portas, eventos, IMU simulada, estrutura do código) | [`docs/PLATAFORMA.md`](docs/PLATAFORMA.md) |
 | Decodificador Python, guia do leitor da Pi e ESP32 falso | [`docs/DECODIFICADOR.md`](docs/DECODIFICADOR.md) |
+| Código do firmware: núcleo portátil em `lib/`, plataforma do notebook em `src/native/`, testes Unity em `test/` | [`docs/PLATAFORMA.md` §7](docs/PLATAFORMA.md) |
 | Simulador do PC (modelo do carro, controles, roteiros e tela) | [`docs/SIMULADOR.md`](docs/SIMULADOR.md) |
 | Testes, ensaios e o que precisa passar em cada fase | [`docs/TESTES.md`](docs/TESTES.md) |
 | Bancada e fiação (peças, pinos do ESP32, as três placas, fios até a Pi) | [`docs/BANCADA.md`](docs/BANCADA.md) |

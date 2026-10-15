@@ -19,6 +19,7 @@ class FakeEsp32WithDecoder(unittest.TestCase):
         self.decoder = esp32_decoder.Decoder(self.clock)
         self.imu = []                                   # (seconds since the start, sample)
         self.obd = []
+        self.empty = []                                 # (seconds since the start, source)
 
     def run_for(self, seconds, pings=True):
         """Both ends on the fake clock, 10 ms at a time; with pings=False the PINGs never arrive."""
@@ -27,7 +28,10 @@ class FakeEsp32WithDecoder(unittest.TestCase):
             if pings:
                 self.esp32.feed(sent)
             for source, ts, sample in self.decoder.feed(self.esp32.data_to_send()):
-                (self.imu if source == "imu" else self.obd).append((ts - self.start, sample))
+                if sample:
+                    (self.imu if source == "imu" else self.obd).append((ts - self.start, sample))
+                else:
+                    self.empty.append((ts - self.start, source))
             self.clock.advance(0.01)
 
     def test_60_s_of_imu_and_obd_without_lost_or_corrupt(self):
@@ -40,6 +44,7 @@ class FakeEsp32WithDecoder(unittest.TestCase):
         self.assertEqual({key: stats["counters"][key] for key in ("lost", "corrupt", "unknown", "boots")},
                          {"lost": 0, "corrupt": 0, "unknown": 0, "boots": 1})
         self.assertEqual(stats["counters"]["skipped_values"], 0)
+        self.assertEqual(self.empty, [])
         self.assertEqual(stats["counters"]["imu"], len(self.imu))
         self.assertGreaterEqual(len(self.imu), 25 * 59)                     # 25/s from the 1st PONG
         self.assertAlmostEqual(self.obd[0][0], 1.2, delta=0.1)              # the 1st PING went at 0 s
@@ -105,6 +110,84 @@ class FakeEsp32WithDecoder(unittest.TestCase):
         self.assertGreater(self.obd[-1][0], 14 + 3 - 0.25)
         self.assertGreater(self.imu[-1][0], 24.9)                           # the IMU goes on
         self.assertEqual(self.decoder.stats()["esp32"]["obd_state"], "waiting_pi")
+        [(at, source)] = self.empty                                         # the STATUS that showed it
+        self.assertEqual(source, "obd")
+        self.assertAlmostEqual(at, 14 + 3, delta=0.001)
+
+    def test_taxas_sets_the_rates_and_the_status_shows_them(self):
+        self.decoder.set_rates(imu=50, obd=10)
+        with self.assertLogs("esp32"):
+            self.run_for(10)
+        esp32 = self.decoder.stats()["esp32"]
+        self.assertEqual([esp32["imu_rate"], esp32["obd_rate"], esp32["counters"]["rejected"]], [50, 10, 0])
+        for samples, gap in ((self.imu, 0.02), (self.obd, 0.1)):
+            instants = [at for at, _ in samples if at > 2]
+            gaps = [later - earlier for earlier, later in zip(instants, instants[1:])]
+            self.assertAlmostEqual(min(gaps), gap, delta=1e-5)
+            self.assertAlmostEqual(max(gaps), gap, delta=1e-5)
+
+    def test_a_rate_outside_the_list_is_rejected_and_the_other_field_applies(self):
+        for seq, rates in enumerate(([30, 10], [30, 3])):      # one count per message (DECODIFICADOR.md §4)
+            self.esp32.feed(esp32_decoder.encode_message(esp32_decoder.TAXAS, 0, seq, bytes(rates)))
+        self.decoder.feed(self.esp32.data_to_send())            # the STATUS of the start
+        esp32 = self.decoder.stats()["esp32"]
+        self.assertEqual([esp32["imu_rate"], esp32["obd_rate"], esp32["counters"]["rejected"]], [25, 10, 2])
+
+    def start_fake(self, **options):
+        """A fake with the options of DECODIFICADOR.md §4, in place of the one setUp made."""
+        self.esp32 = fake_esp32.FakeEsp32(self.clock, random.Random(17), **options)
+
+    def test_car_off_after(self):
+        self.start_fake(car_off_after=20)
+        with self.assertLogs("esp32"):
+            self.run_for(30)
+        esp32 = self.decoder.stats()["esp32"]
+        self.assertEqual(esp32["obd_state"], "no_response")
+        # The values stay, getting older, for the 2 s before SEM_RESPOSTA (MAQUINAS-DE-ESTADO.md §2.4).
+        self.assertAlmostEqual(self.obd[-1][0], 22, delta=0.25)
+        self.assertGreater(self.obd[-1][1]["age_ms"]["rpm"], 1750)
+        [(at, source)] = self.empty
+        self.assertEqual(source, "obd")
+        self.assertAlmostEqual(at, 22, delta=0.01)                          # the next STATUS
+        self.assertGreater(esp32["counters"]["obd_timeouts"], 0)
+        self.assertGreater(self.imu[-1][0], 29.9)                           # the IMU goes on
+
+    def test_reboot_every(self):
+        self.start_fake(reboot_every=20.3)                 # off the PINGs' whole seconds
+        self.decoder.set_rates(imu=50)
+        with self.assertLogs("esp32"):
+            self.run_for(60)
+        stats = self.decoder.stats()
+        self.assertEqual([stats["counters"][key] for key in ("boots", "lost", "corrupt")], [3, 0, 0])
+        esp32 = stats["esp32"]
+        self.assertEqual([esp32["reset_reason"], esp32["uptime_s"]], ["watchdog", 19.0])
+        self.assertEqual(esp32["imu_rate"], 50)                             # asked again after each reboot
+        # The IMU barely stops; the OBD stops once and comes back as from a cold start.
+        imu_gaps = [later[0] - earlier[0] for earlier, later in zip(self.imu, self.imu[1:])]
+        self.assertLess(max(imu_gaps), 0.1)
+        self.assertEqual([source for _, source in self.empty], ["obd", "obd"])
+        for (at, _), reboot in zip(self.empty, (20.3, 40.6)):
+            self.assertAlmostEqual(at, reboot + 1, delta=0.001)             # the 1st synced STATUS
+        for reboot in (20.3, 40.6):
+            first = min(at for at, _ in self.obd if at > reboot)
+            self.assertAlmostEqual(first, reboot + 1.2, delta=0.1)
+
+    def test_garbage(self):
+        self.start_fake(garbage=True)
+        with self.assertLogs("esp32"):
+            self.run_for(60)
+        stats = self.decoder.stats()
+        self.assertGreaterEqual(stats["counters"]["corrupt"], 59)           # 20 bytes at 1 s … 59 s
+        self.assertTrue(stats["synced"])
+        self.assertGreater(len(self.imu), 0.9 * 25 * 59)                    # the line still carries the rest
+
+    def test_drift_ppm(self):
+        self.start_fake(drift_ppm=200)
+        with self.assertLogs("esp32"):
+            self.run_for(150)
+        self.assertAlmostEqual(self.decoder.stats()["sync"]["drift_ppm"], 200, delta=0.5)
+        gaps = [later[0] - earlier[0] for earlier, later in zip(self.imu, self.imu[1:])]
+        self.assertAlmostEqual(gaps[-1], 0.04 / (1 + 200e-6), delta=1e-6)  # 40 ms of its clock
 
     def test_two_fakes_draw_different_boots(self):
         boots = set()

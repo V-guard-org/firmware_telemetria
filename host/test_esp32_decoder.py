@@ -4,6 +4,8 @@ import json
 import logging
 import random
 import statistics
+import sys
+import threading
 import unittest
 
 import esp32_decoder
@@ -91,6 +93,19 @@ class Pings(unittest.TestCase):
             self.clock.advance(0.07)
         self.assertEqual(sent, 11)          # at 0 s and right after each of 1 s … 10 s
 
+    def test_a_new_boot_gets_a_ping_at_once_without_moving_the_others(self):
+        self.decoder.feed(status(boot=0xBEEF))
+        self.assertEqual(self.decoder.data_to_send(), ping(0))
+        self.clock.advance(0.3)
+        self.decoder.feed(status(boot=0x1234))          # PROTOCOLO.md §6.2
+        self.assertEqual(self.decoder.data_to_send(), ping(1))
+        self.assertEqual(self.decoder.data_to_send(), b"")
+        self.clock.advance(0.7)
+        self.assertEqual(self.decoder.data_to_send(), ping(2))
+        self.clock.advance(0.3)
+        self.decoder.feed(status(boot=0x1234, seq=1))   # the same boot: nothing extra
+        self.assertEqual(self.decoder.data_to_send(), b"")
+
     def test_eighth_ping_is_the_protocol_example(self):
         for _ in range(7):
             self.decoder.data_to_send()
@@ -99,7 +114,7 @@ class Pings(unittest.TestCase):
 
 
 def status_body(version=1, t_us=12_345_678, platform=1, sources=0x01, reset=5,
-                imu_rate=50, obd_rate=10, imu_state=0, obd_state=3,
+                imu_rate=25, obd_rate=5, imu_state=0, obd_state=3,
                 pids=bytes.fromhex("98 3B 80 11  00 00 00 00  40 00 00 00"),
                 counters=(1, 2, 3, 4, 5, 6, 7, 8, 9), heap_min=123_456,
                 firmware=b"0.4.0-a58af37"):
@@ -121,7 +136,7 @@ class Status(unittest.TestCase):
         self.decoder = esp32_decoder.Decoder(self.clock)
 
     def test_status_shows_up_in_stats_with_english_names(self):
-        self.assertEqual(self.decoder.feed(status()), [])
+        self.assertEqual(self.decoder.feed(status(imu_rate=50, obd_rate=10)), [])
         self.assertEqual(self.decoder.stats()["esp32"], {
             "protocol": 1,
             "uptime_s": 12.345678,
@@ -162,7 +177,9 @@ class Link(unittest.TestCase):
         stats["counters"]["corrupt"] = 99
         stats["esp32"]["counters"]["blocked"] = 99
         stats["esp32"]["supported_pids"].clear()
+        stats["requested_rates"]["imu"] = 99
         self.assertEqual(self.decoder.stats()["counters"]["corrupt"], 0)
+        self.assertEqual(self.decoder.stats()["requested_rates"]["imu"], 25)
         self.assertEqual(self.decoder.stats()["esp32"]["counters"]["blocked"], 7)
         self.assertEqual(len(self.decoder.stats()["esp32"]["supported_pids"]), 12)
 
@@ -266,7 +283,7 @@ class Sequence(unittest.TestCase):
         self.decoder.feed(IMU_ON_WIRE + OBD_ON_WIRE)
         self.assertEqual(self.counters(), {"lost": 0, "corrupt": 0, "unsynced": 2, "unknown": 0,
                                            "skipped_values": 0, "slow_pongs": 0, "imu": 0, "obd": 0,
-                                           "boots": 1})
+                                           "empty": 0, "boots": 1})
         self.assertEqual(self.decoder.stats()["boot"], 0xBEEF)
 
     def test_gaps_in_seq_are_lost_messages(self):
@@ -340,8 +357,12 @@ def pong(seq_ping, t_us, boot=0xBEEF, seq=0):
 
 
 def ping_seq(data):
-    """The seq of the PING in data, as the ESP32 reads it."""
-    return int.from_bytes(esp32_decoder.cobs_decode(data[:-1])[3:5], "little")
+    """The seq of the PING among the messages in data, as the ESP32 reads it."""
+    for frame in data.split(b"\x00")[:-1]:
+        message = esp32_decoder.cobs_decode(frame)
+        if message[0] == 0x81:
+            return int.from_bytes(message[3:5], "little")
+    raise AssertionError("no PING")
 
 
 class Samples(unittest.TestCase):
@@ -468,6 +489,200 @@ class Samples(unittest.TestCase):
         self.assertEqual(self.unsynced(), 2)
 
 
+class EmptySamples(unittest.TestCase):
+    """DECODIFICADOR.md §3.4: one {} when a source stops, so the Pi stops using its last sample."""
+
+    def setUp(self):
+        self.clock = FakeClock()
+        self.decoder = esp32_decoder.Decoder(self.clock)
+        self.decoder.feed(status())
+        self.decoder.feed(pong(ping_seq(self.decoder.data_to_send()), 1_000_000))
+        self.start = self.clock.time()                  # where t_us 1 000 000 lands
+
+    def empty(self):
+        return self.decoder.stats()["counters"]["empty"]
+
+    def test_the_obd_leaving_reading_gives_one_empty_sample_at_the_status_instant(self):
+        self.assertEqual(len(self.decoder.feed(OBD_ON_WIRE)), 1)
+        [(source, ts, sample)] = self.decoder.feed(status(t_us=3_000_000, obd_state=4))    # SEM_RESPOSTA
+        self.assertEqual((source, sample), ("obd", {}))
+        self.assertAlmostEqual(ts, self.start + 2.0, delta=1e-6)
+        self.assertEqual(self.decoder.feed(status(t_us=4_000_000, obd_state=4)), [])
+        self.assertEqual([self.decoder.stats()["counters"]["obd"], self.empty()], [1, 1])
+
+    def test_the_imu_failing_gives_one_empty_imu_sample(self):
+        self.decoder.feed(IMU_ON_WIRE + OBD_ON_WIRE)
+        [(source, ts, sample)] = self.decoder.feed(status(t_us=3_000_000, imu_state=1))
+        self.assertEqual((source, sample), ("imu", {}))
+        self.assertAlmostEqual(ts, self.start + 2.0, delta=1e-6)
+        self.assertEqual(self.decoder.feed(status(t_us=4_000_000, imu_state=1)), [])
+        self.assertEqual(self.empty(), 1)
+
+    def test_no_empty_sample_for_a_source_that_never_had_values(self):
+        self.assertEqual(self.decoder.feed(status(obd_state=0, imu_state=1)), [])
+        self.assertEqual(self.empty(), 0)
+
+    def test_after_a_reboot_the_empty_waits_for_the_first_synced_status_of_the_new_boot(self):
+        self.decoder.feed(OBD_ON_WIRE)
+        self.assertEqual(self.decoder.feed(status(boot=0x1234, t_us=1_000, obd_state=0)), [])
+        self.decoder.feed(pong(ping_seq(self.decoder.data_to_send()), 2_000, boot=0x1234, seq=1))
+        self.clock.advance(1.0)
+        [(source, ts, sample)] = self.decoder.feed(status(boot=0x1234, seq=2, t_us=1_002_000, obd_state=1))
+        self.assertEqual((source, sample), ("obd", {}))
+        self.assertAlmostEqual(ts, self.clock.time(), delta=1e-6)
+
+    def test_3_s_of_silence_gives_one_empty_sample_per_source_at_the_pi_time(self):
+        self.decoder.feed(IMU_ON_WIRE + OBD_ON_WIRE)
+        self.clock.advance(2.9)
+        self.assertEqual(self.decoder.feed(b""), [])
+        self.clock.advance(0.1)
+        samples = self.decoder.feed(b"")
+        self.assertEqual([(source, sample) for source, _, sample in samples], [("imu", {}), ("obd", {})])
+        for _, ts, _ in samples:
+            self.assertAlmostEqual(ts, self.clock.time(), delta=1e-6)
+        self.clock.advance(5.0)
+        self.assertEqual(self.decoder.feed(b""), [])
+        self.assertEqual(self.empty(), 2)
+
+    def test_a_source_stopped_by_its_status_gets_no_second_empty_from_the_silence(self):
+        self.decoder.feed(IMU_ON_WIRE + OBD_ON_WIRE)
+        self.decoder.feed(status(obd_state=4))
+        self.clock.advance(3.0)
+        self.assertEqual([source for source, _, _ in self.decoder.feed(b"")], ["imu"])
+        self.assertEqual(self.empty(), 2)
+
+    def test_the_samples_come_back_and_the_next_stop_gives_another_empty(self):
+        self.decoder.feed(OBD_ON_WIRE)
+        self.decoder.feed(status(obd_state=4))
+        self.decoder.feed(status(obd_state=3))
+        self.assertEqual(len(self.decoder.feed(OBD_ON_WIRE)), 1)
+        self.assertEqual(len(self.decoder.feed(status(obd_state=4))), 1)
+        self.assertEqual(self.empty(), 2)
+
+
+class UnknownVersion(unittest.TestCase):
+    """PROTOCOLO.md §6.2: an old firmware in the car with a newer decoder on the Pi."""
+
+    def setUp(self):
+        self.clock = FakeClock()
+        self.decoder = esp32_decoder.Decoder(self.clock)
+
+    def sync(self, boot, seq):
+        self.decoder.feed(pong(ping_seq(self.decoder.data_to_send()), 1_000_000, boot=boot, seq=seq))
+
+    def test_one_error_per_boot_and_no_sample_of_that_boot(self):
+        with self.assertLogs(level="ERROR") as logs:
+            self.decoder.feed(status(version=2) + status(version=2, seq=1))
+            self.sync(0xBEEF, seq=2)
+            self.assertEqual(self.decoder.feed(IMU_ON_WIRE + OBD_ON_WIRE + status(version=2, seq=3)), [])
+        self.assertEqual(len(logs.records), 1)
+        stats = self.decoder.stats()
+        self.assertEqual([stats["incompatible"], stats["synced"], stats["esp32"]], [True, False, None])
+        self.assertEqual([stats["counters"]["unsynced"], stats["counters"]["corrupt"]], [2, 0])
+
+    def test_the_pings_go_on(self):
+        with self.assertLogs(level="ERROR"):
+            self.decoder.feed(status(version=2))
+        sent = [self.decoder.data_to_send()]
+        self.clock.advance(1.0)
+        sent.append(self.decoder.data_to_send())
+        self.assertEqual(sent, [ping(0), ping(1)])
+
+    def test_only_the_version_byte_is_read_and_each_new_boot_starts_over(self):
+        with self.assertLogs(level="ERROR") as logs:
+            self.decoder.feed(esp32_decoder.encode_message(0x01, 0xBEEF, 0, b"\x02"))
+            self.assertTrue(self.decoder.stats()["incompatible"])
+            self.decoder.feed(status(boot=0x1234))
+            self.sync(0x1234, seq=1)
+            self.assertFalse(self.decoder.stats()["incompatible"])
+            imu = esp32_decoder.encode_message(0x02, 0x1234, 2, IMU_BEFORE_COBS[5:-2])
+            self.assertEqual(len(self.decoder.feed(imu)), 1)
+            self.decoder.feed(esp32_decoder.encode_message(0x01, 0x5678, 0, b"\x07" + bytes(200)))
+        self.assertEqual(len(logs.records), 2)
+        self.assertEqual(self.decoder.stats()["counters"]["corrupt"], 0)
+
+    def test_a_status_without_even_the_version_byte_is_corrupt(self):
+        self.decoder.feed(esp32_decoder.encode_message(0x01, 0xBEEF, 0))
+        stats = self.decoder.stats()
+        self.assertEqual([stats["counters"]["corrupt"], stats["incompatible"]], [1, False])
+
+
+def taxas(seq, imu, obd):
+    return esp32_decoder.encode_message(0x82, 0, seq, bytes([imu, obd]))
+
+
+class Rates(unittest.TestCase):
+    """PROTOCOLO.md §6.4: the Pi asks again at each STATUS until the ESP32 uses its rates."""
+
+    def setUp(self):
+        self.clock = FakeClock()
+        self.decoder = esp32_decoder.Decoder(self.clock)
+
+    def requested(self):
+        return self.decoder.stats()["requested_rates"]
+
+    def test_the_default_rates_until_set_rates_and_each_field_alone(self):
+        self.assertEqual(self.requested(), {"imu": 25, "obd": 5})
+        self.decoder.set_rates(imu=100)
+        self.decoder.set_rates(obd=1)
+        self.assertEqual(self.requested(), {"imu": 100, "obd": 1})
+
+    def test_a_rate_outside_the_list_raises_and_changes_nothing(self):
+        for imu, obd in ((30, None), (None, 3), (50, 0), (25.0, None), (None, "5")):
+            with self.subTest(imu=imu, obd=obd), self.assertRaises(ValueError):
+                self.decoder.set_rates(imu=imu, obd=obd)
+        self.assertEqual(self.requested(), {"imu": 25, "obd": 5})
+
+    def test_one_taxas_after_each_status_with_other_rates_always_with_both_values(self):
+        self.decoder.set_rates(imu=50)
+        self.decoder.feed(status(imu_rate=25, obd_rate=5))
+        self.assertEqual(self.decoder.data_to_send(), ping(0) + taxas(1, 50, 5))
+        self.clock.advance(0.5)
+        self.assertEqual(self.decoder.data_to_send(), b"")         # nothing until the next STATUS
+        self.decoder.feed(status(seq=1, imu_rate=25, obd_rate=5))  # the TAXAS was lost on the wire
+        self.assertEqual(self.decoder.data_to_send(), taxas(2, 50, 5))
+        self.decoder.feed(status(seq=2, imu_rate=50, obd_rate=5))  # now in use
+        self.clock.advance(0.5)
+        self.assertEqual(self.decoder.data_to_send(), ping(3))
+
+    def test_no_taxas_while_the_esp32_uses_the_requested_rates(self):
+        self.decoder.feed(status(imu_rate=25, obd_rate=5))
+        self.assertEqual(self.decoder.data_to_send(), ping(0))
+
+
+class Threads(unittest.TestCase):
+    """stats() and set_rates() from any thread while the reader feeds (DECODIFICADOR.md §2.5)."""
+
+    def test_stats_is_whole_while_the_reader_feeds_new_boots(self):
+        clock = FakeClock()
+        decoder = esp32_decoder.Decoder(clock)
+        done = threading.Event()
+        torn = []
+
+        def health():
+            rng = random.Random(18)
+            while not done.is_set():
+                stats = decoder.stats()
+                if stats["synced"] and (stats["esp32"] is None or stats["sync"]["pairs"] == 0):
+                    torn.append(stats)
+                decoder.set_rates(imu=rng.choice((100, 50, 25, 20, 10)), obd=rng.choice((1, 2, 5, 10)))
+
+        switch = sys.getswitchinterval()
+        sys.setswitchinterval(1e-6)                     # hand the GIL over as often as it can
+        self.addCleanup(sys.setswitchinterval, switch)
+        thread = threading.Thread(target=health)
+        thread.start()
+        try:
+            for boot in range(1, 3000):                 # each boot: STATUS, then its pair at once
+                decoder.feed(status(boot=boot))
+                decoder.feed(pong(ping_seq(decoder.data_to_send()), 1_000_000, boot=boot, seq=1))
+        finally:
+            done.set()
+            thread.join()
+        self.assertEqual(torn, [])
+        self.assertIn(decoder.stats()["requested_rates"]["imu"], (100, 50, 25, 20, 10))
+
+
 class Pongs(unittest.TestCase):
 
     def setUp(self):
@@ -538,9 +753,9 @@ class Esp32Peer:
     def run(self, seconds, delays=lambda: (0.001, 0.001)):
         """A PING every second, each answered with the (up, down) delays given."""
         for _ in range(seconds):
-            up, down = delays()
-            self.answer_ping(up, down)
-            self.clock.advance(1.0 - up - down)
+            start_us = self.clock.now_us
+            self.answer_ping(*delays())
+            self.clock.advance((start_us + 1_000_000 - self.clock.now_us) / 1e6)  # the next PING is due
 
     def error_ms(self):
         """How far from the truth the decoder puts a sample stamped now."""

@@ -54,6 +54,8 @@ Uma thread faz `select()` na porta e no socket CAN, com prazo até o próximo ti
 
 A ECU simulada não espera o tique: cada requisição lida do socket ganha uma resposta marcada para daqui a "atraso da resposta", e o `select()` acorda nesse prazo.
 
+*Emenda da spec da fase 1 (15/10/2026).* A ECU simulada não abre o socket, como o `Decoder` não abre a porta. Ela recebe um quadro de requisição e o instante, e devolve os quadros de resposta, cada um com o instante em que deve sair. Quem lê e escreve no socket é este laço. Assim, a mesma ECU serve no `vcan0` e no `can0`, e os testes dela rodam sem o `vcan0`, que pede sudo ([`TESTES.md` §3.2](TESTES.md)).
+
 O servidor da tela roda em outra thread. Ele só lê um retrato do estado e põe os cliques numa fila; quem mexe no modelo é sempre a thread do laço.
 
 ## 3. Modelo do carro
@@ -258,7 +260,7 @@ No notebook, o CAN é virtual (`vcan`): não tem ACK, disputa nem erros, então 
 host/
   simulator.py          o simulador: laço, porta, CAN, servidor da tela e modo sem tela
   car_model.py          o modelo do carro (§3)
-  ecu_sim.py            a ECU simulada: requisições OBD no SocketCAN, com as fórmulas inversas
+  ecu_sim.py            a ECU simulada: recebe requisições OBD e devolve as respostas, com as fórmulas inversas; não abre o socket (§2)
   simulator.html        a tela (a variante A do protótipo, refeita)
   roteiros/             volta-no-bairro.txt, liga-e-desliga.txt, falhas.txt, volta-no-maximo.txt
   test_ecu_sim.py       ida e volta das fórmulas de cada PID (unittest)

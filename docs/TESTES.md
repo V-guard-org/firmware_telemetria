@@ -62,7 +62,9 @@ A bancada não tem carro, então transmitir nela não oferece risco. Por isso a 
 
 ### 3.1 Núcleo (Unity)
 
-Os testes montam o núcleo com as quatro portas falsas e um relógio falso que salta de prazo em prazo ([`PLATAFORMA.md` §4.3](PLATAFORMA.md)). Cada módulo tem os seus testes, e as máquinas têm um teste por cenário.
+Os testes montam o núcleo com as quatro portas falsas e um relógio falso que salta de prazo em prazo ([`PLATAFORMA.md` §4.3](PLATAFORMA.md)). As máquinas têm um teste por cenário.
+
+*Emenda da spec da fase 1 (15/10/2026).* Os testes de `lib/obd/`, `lib/imu/` e `lib/core/` entram todos pelo núcleo: eles olham só o que sai nas portas falsas (quadros, bytes e chamadas de `talk()`/`listen()`) e o que o STATUS mostra, sem chamar as classes internas. Assim, reorganizar o código dentro de um módulo não quebra nenhum teste. Só a moldura do protocolo e o portão são testados direto, porque o núcleo não os alcança: ele nunca manda um quadro fora da lista, e os vetores do [`PROTOCOLO.md` §8](PROTOCOLO.md) pedem `boot`, `seq` e `t_us` fixos. A tabela abaixo diz o que se cobre, e não por onde.
 
 | Módulo | O que os testes cobrem |
 |---|---|
@@ -81,7 +83,8 @@ Os testes Python usam o `unittest` da biblioteca padrão, para rodar na Pi sem i
 | Arquivo | O que cobre |
 |---|---|
 | `host/test_esp32_decoder.py` | Os vetores do [`PROTOCOLO.md` §8](PROTOCOLO.md); as amostras vazias; o boot novo; a versão desconhecida; lixo na linha, que nunca levanta exceção (bytes aleatórios com semente fixa); a conta do horário (§7.1) |
-| `host/test_ecu_sim.py` | A ida e volta de cada PID: a fórmula inversa da ECU simulada e a fórmula do decodificador devolvem o valor de partida, dentro da resolução do PID |
+| `host/test_ecu_sim.py` | A ida e volta de cada PID: a fórmula inversa da ECU simulada e a fórmula do decodificador devolvem o valor de partida, dentro da resolução do PID. Também o PID ausente e o mudo, as duas centrais e o `fora_da_lista`. Roda sem o `vcan0`, porque a ECU simulada não abre o socket ([`SIMULADOR.md` §2](SIMULADOR.md)) |
+| `host/test_fake_esp32.py` | 60 s de ESP32 falso no relógio falso, ligados ao `Decoder` sem pty: chegam amostras de IMU e de OBD, sem `lost` nem `corrupt` ([`DECODIFICADOR.md` §4](DECODIFICADOR.md)) |
 | `host/test_roteiros.py` | Os roteiros prontos são lidos sem erro; uma linha desconhecida dá erro com o número da linha |
 
 ### 3.3 Um comando

@@ -365,6 +365,7 @@ python3 host/fake_esp32.py [--path /tmp/vguard-esp32] [opções]
 | `--garbage` | Põe 20 bytes aleatórios na linha a cada segundo |
 | `--drift-ppm N` | Faz o relógio do ESP32 falso andar N ppm mais rápido, para testar a sincronização |
 
+- **Sem I/O por dentro** (emenda da spec da fase 1, 15/10/2026). A lógica do ESP32 falso recebe bytes e instantes e devolve bytes, como o `Decoder`; só a casca do programa cria o pty. Assim, um teste rápido liga o ESP32 falso ao `Decoder` sem pty, por 60 s no relógio falso ([`TESTES.md` §3.2](TESTES.md)). A Isabela depende dele para testar o leitor, então ele não pode quebrar sem aviso.
 - **Moldura.** O ESP32 falso importa o COBS e o CRC do `esp32_decoder.py` e só acrescenta a montagem das mensagens do ESP32. Para que um defeito comum aos dois não passe despercebido, os testes do decodificador usam os vetores do [`PROTOCOLO.md` §8](PROTOCOLO.md).
 - **Permanência.** Não é simulação dentro do firmware, então a ADR-0003 não se aplica: ele fica no projeto, como a ECU simulada.
 
@@ -375,6 +376,7 @@ host/
   esp32_decoder.py        o decodificador: arquivo único, só biblioteca padrão (Python 3.10+)
   fake_esp32.py           o ESP32 falso
   test_esp32_decoder.py   testes, com os vetores do PROTOCOLO.md §8 e um relógio falso
+  test_fake_esp32.py      teste rápido do ESP32 falso ligado ao Decoder, sem pty
 ```
 
 Os testes usam o `unittest` da biblioteca padrão, para rodar também na Pi sem instalar nada: `python3 -m unittest discover -s host` ([`TESTES.md` §3.2](TESTES.md)).

@@ -19,7 +19,7 @@ inline BootInfo test_boot() {
 
 class Harness {
 public:
-    Harness(FakeCan& can, FakeLink& link, FakeImu& imu, FakeSystem& system,
+    Harness(FakeCan& can, FakeLink& link, ImuPort& imu, FakeSystem& system,
             const BootInfo& boot = test_boot())
         : link_(link), core_(can, link, imu, system, boot) {}
 

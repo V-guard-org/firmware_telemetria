@@ -201,6 +201,11 @@ stateDiagram-v2
 - **OK.** São 100 leituras por segundo. Uma leitura com falha é só somada em `falhas_imu`, e a amostra usa as leituras válidas ([`PROTOCOLO.md` §3.2](PROTOCOLO.md)).
 - **FALHA.** Não saem amostras de IMU, e o STATUS mostra `estado_imu = 1`. O OBD segue normalmente (RNF19).
 - **Simulação.** Com a IMU simulada, a falha só acontece se o simulador a provocar.
+- *Emenda do #21 (15/10/2026):*
+  - A IMU inicia antes do 1º STATUS, que já mostra o estado dela.
+  - Um reinício que falha não é uma leitura e não soma em `falhas_imu`.
+  - Ao entrar em FALHA, as leituras válidas do intervalo em curso são descartadas. Ao voltar a OK, começa um intervalo novo, e a 1ª leitura sai 10 ms depois do reinício.
+  - Com o núcleo chamado atrasado, sai uma leitura só, sem rajada, e o ritmo recomeça dali, como o STATUS.
 
 ## 4. Cenários
 

@@ -14,6 +14,7 @@
 #include <string>
 
 #include "core.h"
+#include "imu_sim.h"
 #include "pty_link.h"
 
 #ifndef VGUARD_FIRMWARE_VERSION
@@ -33,14 +34,6 @@ public:
     void talk() override {}
     void transmit(const CanFrame&) override {}
     ListenSummary listen_summary() const override { return {}; }
-};
-
-// O notebook só tem a IMU simulada (§5). Ela chega no ticket da IMU de ponta a ponta (#21).
-class NoImuYet : public ImuPort {
-public:
-    bool read(ImuReading&) override { return false; }
-    bool restart() override { return false; }
-    bool simulated() const override { return true; }
 };
 
 class NotebookSystem : public SystemPort {
@@ -124,10 +117,11 @@ int main(int argc, char** argv) {
     }
 
     NoCan can;
-    NoImuYet imu;
+    ImuSim imu;  // o notebook só tem a IMU simulada (PLATAFORMA.md §5)
     NotebookSystem system;
     const BootInfo boot{draw_boot(), ResetReason::kPowerOn, Platform::kNotebook, VGUARD_FIRMWARE_VERSION};
     Core core(can, link, imu, system, boot);
+    core.register_dev_handler(ImuSim::kMessageType, imu);
 
     char line[256];
     std::snprintf(line, sizeof(line), "native firmware %s on %s -> %s, boot 0x%04X",

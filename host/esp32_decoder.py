@@ -9,9 +9,11 @@ import collections
 import copy
 import logging
 import struct
+import threading
 import time
 
-VERSION = "0.2.0"
+VERSION = "1.0.0"
+PROTOCOL_VERSIONS = (1,)            # the versions in the 1st byte of the STATUS this file reads
 
 # The time sync (DECODIFICADOR.md §3.8). They change only after a measurement (TESTES.md §7.3).
 PING_INTERVAL_S = 1.0
@@ -28,6 +30,7 @@ OBD = 0x03
 PONG = 0x04
 LOG = 0x05
 PING = 0x81
+TAXAS = 0x82
 
 _HEADER = struct.Struct("<BHH")     # type, boot, seq
 _CRC_SIZE = 2
@@ -44,9 +47,15 @@ _IMU = struct.Struct("<Q12h")      # t_us, then mean and peak of ax ay az gx gy 
 _OBD = struct.Struct("<QB")        # t_us, n; the n values follow (§3.3)
 _OBD_VALUE = struct.Struct("<BHB")  # pid, age, size; the raw bytes follow
 _PONG = struct.Struct("<HQ")       # seq_ping, t_us (§3.4)
+_TAXAS = struct.Struct("<BB")      # imu, obd (§4.2)
 
 _MIN_BODY = {STATUS: _STATUS.size, IMU: _IMU.size, OBD: _OBD.size, PONG: _PONG.size,
              LOG: _LOG.size}
+
+# The rates the ESP32 accepts, in samples/s, and the ones it starts with (PROTOCOLO.md §4.2)
+_IMU_RATES = (100, 50, 25, 20, 10)
+_OBD_RATES = (1, 2, 5, 10)
+_DEFAULT_RATES = {"imu": 25, "obd": 5}
 
 _IMU_KEYS = ("ax", "ay", "az", "gx", "gy", "gz")
 _IMU_DIVISORS = (100, 100, 100, 10, 10, 10)    # 0.01 m/s² and 0.1 °/s on the wire
@@ -65,6 +74,7 @@ _OBD_FORMULAS = {
 }
 
 _esp32_logger = logging.getLogger("esp32")
+_log = logging.getLogger(__name__)
 
 _PLATFORMS = ("notebook", "esp32")
 _RESET_REASONS = ("unknown", "power_on", "external_pin", "software", "panic", "watchdog", "brownout")
@@ -130,71 +140,105 @@ class Decoder:
 
     def __init__(self, clock=time):
         self._clock = clock
+        # stats() and set_rates() may come from any thread. Reentrant, in case a logging
+        # handler calls stats() while feed() logs.
+        self._lock = threading.RLock()
         self._seq = 0                   # of the messages the Pi sends
         self._next_ping_at = None
+        self._ping_now = False          # a new boot: one more PING, off the 1 s schedule
+        self._requested = dict(_DEFAULT_RATES)
+        self._rates_pending = False     # a STATUS showed other rates than the requested ones
         self._buffer = b""
         self._skipping = False          # dropped an overlong buffer; wait for the next 0x00
         self._counters = {"lost": 0, "corrupt": 0, "unsynced": 0, "unknown": 0, "skipped_values": 0,
-                          "slow_pongs": 0, "imu": 0, "obd": 0, "boots": 0}
+                          "slow_pongs": 0, "imu": 0, "obd": 0, "empty": 0, "boots": 0}
         self._boot = None
+        self._incompatible = False      # this boot's STATUS has a protocol version we do not know
         self._last_seq = None
         self._last_valid_at = None
         self._esp32 = None
         self._pings = {}                # seq → instant each PING went out
         self._sync = _Sync()
+        self._live = {"imu": False, "obd": False}   # the last sample delivered had values
 
     def feed(self, data):
         """Bytes read from the port. Returns the samples ready for update()."""
-        now = self._clock.monotonic()
-        wall_offset = self._clock.time() - now  # read at each delivery, so a step of chrony counts at once
-        *frames, rest = (self._buffer + data).split(b"\x00")
-        if self._skipping:
-            if frames:
-                frames.pop(0)
-                self._skipping = False
-            else:
+        with self._lock:
+            now = self._clock.monotonic()
+            # Read at each delivery, so a step of chrony counts at once.
+            wall_offset = self._clock.time() - now
+            *frames, rest = (self._buffer + data).split(b"\x00")
+            if self._skipping:
+                if frames:
+                    frames.pop(0)
+                    self._skipping = False
+                else:
+                    rest = b""
+            if len(rest) > _MAX_BUFFER:
+                self._counters["corrupt"] += 1
+                self._skipping = True
                 rest = b""
-        if len(rest) > _MAX_BUFFER:
-            self._counters["corrupt"] += 1
-            self._skipping = True
-            rest = b""
-        self._buffer = rest
-        samples = []
-        for frame in frames:
-            if frame:                   # back-to-back zeros carry no message
-                sample = self._handle_frame(frame, now)
-                if sample:
-                    source, t_us, values = sample
-                    samples.append((source, self._sync.to_monotonic(t_us) + wall_offset, values))
-        return samples
+            self._buffer = rest
+            samples = []
+            if self._last_valid_at is not None and now - self._last_valid_at >= LINK_TIMEOUT_S:
+                # The ESP32 went silent (DECODIFICADOR.md §3.4): no t_us to convert, so the Pi's time now.
+                samples += [(source, now + wall_offset, {}) for source in self._newly_stopped(("imu", "obd"))]
+            for frame in frames:
+                if frame:                   # back-to-back zeros carry no message
+                    for source, t_us, values in self._handle_frame(frame, now):
+                        samples.append((source, self._sync.to_monotonic(t_us) + wall_offset, values))
+            if self._incompatible:
+                # A firmware we cannot read: for the Pi, both sources stopped, at its time now.
+                samples += [(source, now + wall_offset, {}) for source in self._newly_stopped(("imu", "obd"))]
+            return samples
 
     def data_to_send(self):
         """Everything pending for the ESP32, to be written right away."""
-        now = self._clock.monotonic()
-        out = bytearray()
-        if self._next_ping_at is None or now >= self._next_ping_at:
-            self._pings = {seq: at for seq, at in self._pings.items() if now - at < PONG_WINDOW_S}
-            self._pings[self._seq] = now
-            out += self._message(PING)
-            self._next_ping_at = (self._next_ping_at or now) + PING_INTERVAL_S
-            if self._next_ping_at <= now:   # the reader stalled; no burst to catch up
-                self._next_ping_at = now + PING_INTERVAL_S
-        return bytes(out)
+        with self._lock:
+            now = self._clock.monotonic()
+            out = bytearray()
+            due = self._next_ping_at is None or now >= self._next_ping_at
+            if due or self._ping_now:
+                self._pings = {seq: at for seq, at in self._pings.items() if now - at < PONG_WINDOW_S}
+                self._pings[self._seq] = now
+                out += self._message(PING)
+                self._ping_now = False
+            if due:
+                self._next_ping_at = (self._next_ping_at or now) + PING_INTERVAL_S
+                if self._next_ping_at <= now:   # the reader stalled; no burst to catch up
+                    self._next_ping_at = now + PING_INTERVAL_S
+            if self._rates_pending:
+                out += self._message(TAXAS, _TAXAS.pack(self._requested["imu"], self._requested["obd"]))
+                self._rates_pending = False
+            return bytes(out)
+
+    def set_rates(self, imu=None, obd=None):
+        """The rates the ESP32 should send at, in samples/s; None keeps that one as it is."""
+        for source, value, accepted in (("imu", imu, _IMU_RATES), ("obd", obd, _OBD_RATES)):
+            if value is not None and not (type(value) is int and value in accepted):     # no True, no 25.0
+                raise ValueError(f"the {source} rate must be one of {accepted}, not {value!r}")
+        with self._lock:
+            self._requested = {"imu": self._requested["imu"] if imu is None else imu,
+                               "obd": self._requested["obd"] if obd is None else obd}
 
     def stats(self):
         """The link state, the decoder's counters and the ESP32's last STATUS."""
-        now = self._clock.monotonic()
-        return {
-            "connected": self._last_valid_at is not None
-                         and now - self._last_valid_at < LINK_TIMEOUT_S,
-            "synced": self._synced(),
-            "boot": self._boot,
-            "sync": self._sync.health(now),
-            "counters": dict(self._counters),
-            "esp32": copy.deepcopy(self._esp32),
-        }
+        with self._lock:
+            now = self._clock.monotonic()
+            return {
+                "connected": self._last_valid_at is not None
+                             and now - self._last_valid_at < LINK_TIMEOUT_S,
+                "synced": self._synced(),
+                "incompatible": self._incompatible,
+                "boot": self._boot,
+                "requested_rates": dict(self._requested),
+                "sync": self._sync.health(now),
+                "counters": dict(self._counters),
+                "esp32": copy.deepcopy(self._esp32),
+            }
 
     def _handle_frame(self, frame, now):
+        """The samples in one frame, as (source, t_us, values)."""
         try:
             data = cobs_decode(frame)
         except ValueError:
@@ -203,7 +247,7 @@ class Decoder:
         if (len(payload) < _HEADER.size or len(data) > _MAX_MESSAGE
                 or int.from_bytes(crc, "little") != crc16(payload)):
             self._counters["corrupt"] += 1
-            return
+            return []
         msg_type, boot, seq = _HEADER.unpack_from(payload)
         body = payload[_HEADER.size:]
         silent = self._last_valid_at is None or now - self._last_valid_at >= LINK_TIMEOUT_S
@@ -212,18 +256,29 @@ class Decoder:
             self._boot = boot
             self._counters["boots"] += 1
             self._esp32 = None
+            self._incompatible = False
             self._sync = _Sync()        # the ESP32's clock started again from zero
+            self._ping_now = True       # so its 1st pair comes in milliseconds (PROTOCOLO.md §6.2)
         elif not silent and 0 < step < 0x8000:
             # A repeated or earlier seq is a restart, not 65535 lost messages.
             self._counters["lost"] += step - 1
         self._last_seq = seq
         self._last_valid_at = now
 
-        if msg_type in _MIN_BODY and len(body) < _MIN_BODY[msg_type]:
+        if msg_type == STATUS and body and body[0] not in PROTOCOL_VERSIONS:
+            if not self._incompatible:
+                self._incompatible = True
+                _log.error("the ESP32 (boot 0x%04X) speaks protocol version %d, and esp32_decoder %s "
+                           "knows %s: no samples from it until this file is updated",
+                           boot, body[0], VERSION, PROTOCOL_VERSIONS)
+        elif self._incompatible and msg_type in (IMU, OBD):
+            # Their layout may have changed with the version: counted, not read.
+            self._counters["unsynced"] += 1
+        elif msg_type in _MIN_BODY and len(body) < _MIN_BODY[msg_type]:
             # The CRC matched, so the header counted above; only the body is unreadable.
             self._counters["corrupt"] += 1
         elif msg_type == STATUS:
-            self._esp32 = _parse_status(body)
+            return self._handle_status(body)
         elif msg_type == LOG:
             _t_us, level = _LOG.unpack_from(body)
             _esp32_logger.log(logging.ERROR if level == _LOG_ERROR else logging.WARNING,
@@ -247,19 +302,43 @@ class Decoder:
             else:
                 t_us, values, skipped = parsed
                 self._counters["skipped_values"] += skipped
-                if values["age_ms"]:    # some value left; {} would mean the OBD stopped (§3.4)
+                if values["age_ms"]:    # some value left; {} would mean it stopped (DECODIFICADOR.md §3.4)
                     return self._deliver("obd", t_us, values)
         else:
             self._counters["unknown"] += 1
-        return None
+        return []
+
+    def _handle_status(self, body):
+        """Shows the STATUS in stats(), asks for the rates again, and stops the sources it shows stopped."""
+        self._esp32 = _parse_status(body)
+        # No ACK: the STATUS confirms, and a TAXAS goes until it shows the rates (PROTOCOLO.md §6.4).
+        in_use = (self._esp32["imu_rate"], self._esp32["obd_rate"])
+        self._rates_pending = in_use != (self._requested["imu"], self._requested["obd"])
+        if not self._synced():
+            return []
+        # The 1st synced STATUS that shows a source stopped gives its {} (DECODIFICADOR.md §3.4).
+        stopped = [source for source, stop in (("imu", self._esp32["imu_state"] == "failed"),
+                                                ("obd", self._esp32["obd_state"] != "reading"))
+                   if stop]
+        t_us = _STATUS.unpack_from(body)[1]
+        return [(source, t_us, {}) for source in self._newly_stopped(stopped)]
 
     def _deliver(self, source, t_us, values):
         """The sample, if this boot has a STATUS and a pair to convert its t_us (PROTOCOLO.md §6.2)."""
         if not self._synced():
             self._counters["unsynced"] += 1
-            return None
+            return []
         self._counters[source] += 1
-        return source, t_us, values
+        self._live[source] = True
+        return [(source, t_us, values)]
+
+    def _newly_stopped(self, sources):
+        """Those that get their {} now: once per stop, so only if their last sample had values."""
+        stopped = [source for source in sources if self._live[source]]
+        for source in stopped:
+            self._live[source] = False
+            self._counters["empty"] += 1
+        return stopped
 
     def _synced(self):
         return self._esp32 is not None and self._sync.ready

@@ -219,7 +219,7 @@ Com uma fila só, os eventos chegam ao núcleo na ordem em que aconteceram, e os
 ### 4.2 Notebook
 
 - **Laço.** Uma única thread faz `poll()` no socket do `vcan0` e no pty, com o próximo prazo do núcleo como limite de espera.
-- **Partida.** `program --can vcan0`. O firmware cria o pty e um atalho de caminho fixo, `/tmp/vguard-esp32`, que o decodificador e o simulador abrem. Na fase 2, os mesmos programas abrem a `/dev/ttyUSB0` no lugar dele. O simulador do PC pode iniciar o firmware como processo filho, para reiniciá-lo por um botão ([`SIMULADOR.md` §4](SIMULADOR.md)).
+- **Partida.** `program --can vcan0`. O firmware cria o pty e um atalho de caminho fixo, `/tmp/vguard-esp32`, que o decodificador e o simulador abrem. Na fase 2, os mesmos programas abrem a `/dev/vguard-esp32` no lugar dele ([`BANCADA.md` §5](BANCADA.md)). O simulador do PC pode iniciar o firmware como processo filho, para reiniciá-lo por um botão ([`SIMULADOR.md` §4](SIMULADOR.md)).
 - **`BootInfo`.** O `boot` é sorteado, o motivo de reinício é 1 (energia) e a `plataforma` é 0.
 - **Logs.** Saem também no terminal.
 - **Sem watchdog.**
@@ -252,7 +252,7 @@ TEST_ASSERT_EQUAL(8, h.last_status().obd_state);        // BLOQUEADO
   - Com a marca de falha ligada, o `read()` falha. É assim que o simulador provoca uma falha da IMU.
   - Se passar mais de 1 s sem mensagem, o `read()` também falha. Depois de 10 falhas seguidas, a IMU entra em FALHA, como um sensor desligado.
 - **Como a `0x83` chega a ela.** O núcleo não conhece a simulação. Ele entrega as mensagens de desenvolvimento a quem se registrou com `register_dev_handler()`, e a IMU simulada se registra para a `0x83`. Sem ninguém registrado, a mensagem soma 1 em `rejeitadas`.
-- **Fase 4 (ADR-0009).** Os fios da Pi ficam numa UART que não é a UART0, e o simulador do PC manda a `0x83` pelo USB, que é a UART0.
+- **Fase 4 (ADR-0009).** Os fios da Pi ficam na UART2 (GPIO17 e GPIO16, [`BANCADA.md` §7](BANCADA.md)), e o simulador do PC manda a `0x83` pelo USB, que é a UART0.
   - Com a IMU simulada e a ligação com a Pi fora da UART0, uma tarefa a mais lê a UART0 e entrega os bytes ao núcleo por `on_dev_bytes()`.
   - O `on_dev_bytes()` remonta as mensagens como o `on_link_bytes()`, mas só entrega as de desenvolvimento aos registrados. As demais, como um PING, somam 1 em `rejeitadas`.
   - Com a IMU real, a UART0 não é lida.
@@ -307,4 +307,5 @@ host/                Python: decodificador e ESP32 falso (#12); simulador, model
 - **[`DECODIFICADOR.md`](DECODIFICADOR.md)** (ticket #12): a API do decodificador para o leitor da Isabela. A IMU_SIM não faz parte dela.
 - **[`TESTES.md`](TESTES.md)** (ticket #13): os testes de cada cenário, o roteiro da bancada e a sessão de osciloscópio.
 - **Bancada (fase 2):** o PCNT junto com o TWAI no GPIO26 se prova com os dois casos de velocidade errada, e a sequência do GPIO27, no osciloscópio ([`TESTES.md` §10](TESTES.md)).
+- **[`BANCADA.md`](BANCADA.md)** (ticket #11): os pinos de cada porta no ESP32 e a fiação das placas.
 - **Driver da IMU real:** depende do modelo a ser comprado (T14.1).

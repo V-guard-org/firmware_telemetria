@@ -20,3 +20,7 @@ Nos dois casos, o OBD vem da ECU simulada, no mesmo notebook. Assim, um único m
 - A plataforma do ESP32 também lê a UART0 quando a ligação com a Pi está em outra UART e a IMU é simulada. O núcleo ganha uma segunda entrada de bytes, que só entrega mensagens de desenvolvimento ([`PLATAFORMA.md` §5](../PLATAFORMA.md)).
 - Com a IMU real, a UART0 não é lida. Quando a simulação for apagada, essa leitura sai junto.
 - O USB fica livre na fase 4: dá para regravar o firmware por ele, com um notebook. Os fios da Pi também deixam de receber o texto que a ROM imprime na UART0 no boot.
+
+## Nota (ticket #11, 15/10/2026)
+
+Os fios da Pi ficam na UART2 do ESP32 (TX = GPIO17, RX = GPIO16). Com o USB ligado, o fio de 5 V da Pi fica desligado, porque a placa aceita uma fonte só; os fios de sinal levam um resistor de 1 kΩ, porque o ESP32 e a Pi deixam de ligar e desligar juntos ([`BANCADA.md` §7](../BANCADA.md)).

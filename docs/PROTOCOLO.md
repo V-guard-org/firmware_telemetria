@@ -38,12 +38,12 @@ Os termos seguem o [`CONTEXT.md`](../CONTEXT.md).
 | Fase | Ligação | Velocidade |
 |---|---|---|
 | 1 · notebook | Par de pseudo-terminais (pty) entre o firmware nativo e o decodificador | Não se aplica |
-| 2 · ESP32 na bancada | Cabo USB do DevKit (UART0 do ESP32) até o notebook | 460800 baud |
-| 4 · integração | Fios TX, RX, GND e 5 V até a UART5 da Pi (`/dev/ttyAMA5`, pinos 32/33) | 460800 baud |
+| 2 · ESP32 na bancada | Cabo USB da placa ESP32 (UART0) até o notebook | 460800 baud |
+| 4 · integração | Fios da UART2 do ESP32 (TX = GPIO17, RX = GPIO16) e GND até a UART5 da Pi (`/dev/ttyAMA5`, pinos 33/32 e 34). O fio de 5 V só entra sem o USB | 460800 baud |
 
 - Formato 8N1, sem controle de fluxo.
 - No boot, a ROM do ESP32 imprime texto a 115200 baud na UART0. Na velocidade do protocolo, isso chega como lixo, e o CRC descarta.
-- Qual UART do ESP32 vai para os fios na fase 4 fica para o [#11](https://github.com/V-guard-org/firmware_telemetria/issues/11). Não pode ser a UART0, que fica com o USB para a IMU_SIM (ADR-0009). Para o protocolo, é só uma constante.
+- Na fase 4, os fios saem da UART2 do ESP32, e não da UART0, que fica com o USB para a IMU_SIM (ADR-0009). Para o protocolo, a UART é só uma constante. A fiação está no [`BANCADA.md` §7](BANCADA.md).
 
 ## 2. Moldura
 
@@ -392,4 +392,4 @@ no cabo (9):        02 81 01 02 07 02 1A 01 00
 - **[`PLATAFORMA.md`](PLATAFORMA.md)** (ticket #10): onde o núcleo portátil monta, envia e recebe estas mensagens, e o que fica na camada de plataforma.
 - **[`TESTES.md`](TESTES.md)** (ticket #13): como provar tudo isto: os testes, o ensaio de 2 h e a medição do horário.
 - **[`SIMULADOR.md`](SIMULADOR.md)** (ticket #9): o que o simulador põe na IMU_SIM e como faz o papel da Pi no desenvolvimento.
-- **[#11](https://github.com/V-guard-org/firmware_telemetria/issues/11):** qual UART do ESP32 vai para os fios na fase 4, que não pode ser a UART0.
+- **[`BANCADA.md`](BANCADA.md)** (ticket #11): os fios da fase 4, da UART2 do ESP32 até a UART5 da Pi, e a alimentação.

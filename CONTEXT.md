@@ -202,3 +202,25 @@ _Avoid_: firmware de debug, modo de teste
 **Gerador de tráfego**:
 A terceira placa ESP32 da bancada, com um programa que só põe quadros no barramento, para imitar as centrais do carro conversando entre si.
 _Avoid_: ECU simulada (que responde ao OBD), adaptador USB-CAN
+
+### Bancada
+
+**Bancada**:
+As placas ESP32 ligadas entre si e ao notebook nas fases 2 e 4: a placa do firmware, o adaptador USB-CAN e o gerador de tráfego, na mesma linha.
+_Avoid_: protótipo, laboratório
+
+**Placa do firmware**:
+A placa ESP32 que roda o firmware do V-GUARD, o entregue ou o build de teste. É a única que nunca sai da linha.
+_Avoid_: ESP32 A, placa principal, DevKit
+
+**Linha**:
+O fio único do barramento de bancada sem transceptor. Cada placa se liga a ela por um diodo no TX e direto no RX. Tirar uma placa da linha é desligar o diodo e o RX dela, com a placa ainda alimentada.
+_Avoid_: barramento (para o fio), CANH
+
+**LED de liberação**:
+O LED da bancada no GPIO27, aceso enquanto o firmware libera o transceptor.
+_Avoid_: LED de status, LED do CAN
+
+**Sessão com transceptor**:
+A sessão curta de bancada, antes do carro, em que a placa do firmware e o adaptador usam transceptores de verdade, para provar o modo silencioso e o jumper do GPIO27.
+_Avoid_: teste do transceptor, bancada com transceptor

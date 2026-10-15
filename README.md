@@ -16,6 +16,7 @@ O planejamento foi concluído em 13/10/2026. O desenvolvimento começa pela fase
 | Decodificador Python, guia do leitor da Pi e ESP32 falso | [`docs/DECODIFICADOR.md`](docs/DECODIFICADOR.md) |
 | Simulador do PC (modelo do carro, controles, roteiros e tela) | [`docs/SIMULADOR.md`](docs/SIMULADOR.md) |
 | Testes, ensaios e o que precisa passar em cada fase | [`docs/TESTES.md`](docs/TESTES.md) |
+| Bancada e fiação (peças, pinos do ESP32, as três placas, fios até a Pi) | [`docs/BANCADA.md`](docs/BANCADA.md) |
 | Resultados dos ensaios (um arquivo por ensaio) | `docs/ensaios/` |
 | Mapa de decisões em aberto | [issue #1](https://github.com/V-guard-org/firmware_telemetria/issues/1) (etiqueta `wayfinder:map`) |
 | Resultados de pesquisas | ramos `research/*` |
@@ -47,5 +48,7 @@ sudo modprobe vcan
 sudo ip link add dev vcan0 type vcan
 sudo ip link set vcan0 up
 ```
+
+Para a fase 2, o notebook também precisa do grupo `dialout` e da regra do udev que dá nomes fixos às placas ([`docs/BANCADA.md` §5](docs/BANCADA.md)).
 
 Projeto da disciplina Oficina de Integração 2 (UTFPR). Equipe: Nicolas Rossi Gariba, Pedro Eugênio Marin do Nascimento, Isabela Bella Bortoleto e Thiago Moreira Gomes de Lima.

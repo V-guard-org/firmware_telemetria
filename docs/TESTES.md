@@ -20,6 +20,7 @@ O que se prova está no [`PROTOCOLO.md`](PROTOCOLO.md), no [`MAQUINAS-DE-ESTADO.
 - **Build de teste:** um firmware à parte, que trava de propósito e pulsa um pino. Nunca é o firmware entregue (§8).
 - **Bancada com três placas:** o firmware, o adaptador USB-CAN e um gerador de tráfego, que imita as centrais do carro conversando (§10).
 - **Osciloscópio,** numa única ida ao laboratório, para a subida da linha e o GPIO27 (§10.4).
+- **Sessão com transceptor:** antes do carro, dois TJA1051T/3 na bancada provam o modo silencioso e o jumper do GPIO27 (§10.7).
 - **Resultados** em `docs/ensaios/`, um arquivo por ensaio (§15).
 - **Ensaio no carro:** fica para quando o carro for definido (§13).
 
@@ -34,6 +35,7 @@ O que se prova está no [`PROTOCOLO.md`](PROTOCOLO.md), no [`MAQUINAS-DE-ESTADO.
 | Bancada | Três ESP32 e o notebook | TWAI, falhas do CAN, carga, watchdog, GPIO27 | Fase 2 |
 | Pi | Raspberry Pi | Decodificador no Python da Pi e a UART5 | Fase 3 |
 | Integração | ESP32, Pi e notebook | A ligação pelos fios e o horário (T40, T41) | Fase 4 |
+| Sessão com transceptor | Placa do firmware e adaptador com TJA1051T/3 | O modo silencioso de verdade e o jumper do GPIO27 | Antes do carro |
 | Carro | O carro do ensaio | Transceptor, centrais de verdade, tempos do grupo 3 (§14) | 25/11 |
 
 ## 2. Passagem de fase e itens de segurança
@@ -51,7 +53,7 @@ A bancada não tem carro, então transmitir nela não oferece risco. Por isso a 
 | Item | Onde se prova |
 |---|---|
 | **Lista fechada:** só saem requisições do modo 01 para os endereços padronizados | Teste do portão e conferência externa em todo ensaio (§5) |
-| **Transceptor silencioso no boot e depois de uma pane:** o GPIO27 nunca vai a 0 antes de o firmware liberá-lo | Osciloscópio no boot, depois de `esp_restart()` e depois de uma pane provocada pelo build de teste (§10.4) |
+| **Transceptor silencioso no boot e depois de uma pane:** o GPIO27 nunca vai a 0 antes de o firmware liberá-lo | Osciloscópio no boot, depois de `esp_restart()` e depois de uma pane provocada pelo build de teste (§10.4); com o transceptor de verdade, na sessão com transceptor (§10.7) |
 | **Silêncio sem a Pi:** 3 s sem PING levam a ESPERANDO_PI com o transceptor silencioso | Teste do cenário "a Pi trava", roteiro `falhas.txt` e osciloscópio (§10.4) |
 | **Bloqueio na 3ª falha** | Teste do cenário a 250 kbit/s mudo e o mesmo caso na bancada (§10.3) |
 | **Escuta antes de falar:** nenhum quadro antes de 1 s de escuta | Testes de todos os cenários e osciloscópio (§10.4) |
@@ -176,8 +178,8 @@ Cada amostra fora disso soma 1 em `fora_do_esperado`. A conferência pega, de po
 | Fase | Comando |
 |---|---|
 | 1 | `python3 host/simulator.py --firmware .pio/build/native/program --roteiro host/roteiros/volta-no-bairro.txt --repetir --sem-tela --duracao 2h` |
-| 2 | O mesmo, com `--porta /dev/ttyUSB0 --can can0` no lugar de `--firmware` |
-| 4 | No notebook, `python3 host/simulator.py --so-carro --porta /dev/ttyUSB0 --can can0 --roteiro … --repetir --sem-tela --duracao 2h`; na Pi, `python3 host/link_test.py --porta /dev/ttyAMA5 --duracao 2h` |
+| 2 | O mesmo, com `--porta /dev/vguard-esp32 --can can0` no lugar de `--firmware` |
+| 4 | No notebook, `python3 host/simulator.py --so-carro --porta /dev/vguard-esp32 --can can0 --roteiro … --repetir --sem-tela --duracao 2h`; na Pi, `python3 host/link_test.py --porta /dev/ttyAMA5 --duracao 2h` |
 
 **`host/link_test.py`** é o nosso papel da Pi na fase 4: abre a porta, usa o `Decoder` para enviar o PING e o TAXAS e, ao fim, imprime o mesmo resumo do simulador sem tela. Assim, o ensaio oficial não depende de o leitor da Isabela estar pronto. Durante o ensaio, o leitor dela fica parado, porque a porta tem um único leitor.
 
@@ -195,8 +197,8 @@ O ESP32 marca o PONG num instante entre o envio do PING (`t1`) e a chegada do PO
 ### 7.2 Medição com um fio (fase 4)
 
 1. Grava-se o build de teste com o pulso ligado (§8). A cada segundo, o ESP32 muda um GPIO e manda um LOG com o `t_us` dessa mudança.
-2. Um fio leva esse GPIO a um GPIO da Pi. Os dois pinos são escolhidos no [#11](https://github.com/V-guard-org/firmware_telemetria/issues/11).
-3. Na Pi, `python3 host/link_test.py --porta /dev/ttyAMA5 --pulso <gpio> --duracao 30min` marca cada borda com o relógio monotônico, o mesmo do decodificador, e converte o `t_us` do LOG com a conversão do próprio decodificador.
+2. Um fio leva o GPIO18 do ESP32 ao GPIO16 da Pi, no pino 36 ([`BANCADA.md` §7.3](BANCADA.md)).
+3. Na Pi, `python3 host/link_test.py --porta /dev/ttyAMA5 --pulso 16 --duracao 30min` marca cada borda com o relógio monotônico, o mesmo do decodificador, e converte o `t_us` do LOG com a conversão do próprio decodificador.
 4. O resumo traz o erro máximo e o percentil 99 da diferença. O número vai para o T41.
 
 **Critério:** erro máximo de até 10 ms (D12).
@@ -218,7 +220,7 @@ Um ambiente à parte no PlatformIO, `vguard_test`, compila o firmware do ESP32 c
 | Constante | O que faz | Para quê |
 |---|---|---|
 | `VGUARD_TEST_HANG_S` | Trava a tarefa do núcleo depois de N segundos | O ensaio do watchdog (§10.3) e a pane no osciloscópio (§10.4) |
-| `VGUARD_TEST_PULSE_GPIO` | Muda o GPIO a cada 1 s e manda um LOG com o `t_us` da mudança | A medição do horário (§7.2) |
+| `VGUARD_TEST_PULSE_GPIO` | Muda o GPIO (o 18, [`BANCADA.md` §7.3](BANCADA.md)) a cada 1 s e manda um LOG com o `t_us` da mudança | A medição do horário (§7.2) |
 
 - Os ganchos ficam no código da plataforma do ESP32 (`src/vguard/`), entre `#if`. O núcleo não os conhece.
 - **O firmware entregue é sempre o ambiente `vguard`, que não tem nenhum gancho.** Assim, nenhum comando consegue derrubar o firmware entregue.
@@ -239,9 +241,9 @@ São três placas ESP32 no mesmo barramento de bancada, com BAT43 e *pull-up* de
 
 | Placa | Programa | Ligação ao notebook |
 |---|---|---|
-| Firmware | `vguard`, ou `vguard_test` nos ensaios do §8 | USB, `/dev/ttyUSB0` |
-| Adaptador USB-CAN | Doggie ou a ponte própria ([#3](https://github.com/V-guard-org/firmware_telemetria/issues/3)) | USB, `can0` pelo `slcand` |
-| **Gerador de tráfego** | `tools/can-trafego/` | USB, só para alimentar e ler os contadores |
+| Firmware | `vguard`, ou `vguard_test` nos ensaios do §8 | USB, `/dev/vguard-esp32` |
+| Adaptador USB-CAN | Doggie ou a ponte própria ([#3](https://github.com/V-guard-org/firmware_telemetria/issues/3)) | USB, `/dev/vguard-adaptador`, que vira o `can0` pelo `slcand` |
+| **Gerador de tráfego** | `tools/can-trafego/` | USB, `/dev/vguard-gerador`, só para alimentar e ler os contadores |
 
 **O gerador de tráfego** é um programa pequeno em ESP-IDF, fora do firmware, como a ECU simulada:
 - põe rajadas de quadros de ID prioritário, como `0x100`, no barramento; a carga é ajustável, e o ponto de partida é 50%;
@@ -250,7 +252,7 @@ São três placas ESP32 no mesmo barramento de bancada, com BAT43 e *pull-up* de
 
 Ele serve para três coisas: o aceite do #2, com duas placas transmitindo ao mesmo tempo; a disputa perdida; e o carro com tráfego, porque o adaptador, limitado pela serial de 115200, passa no máximo uns 400 quadros/s, contra 2 000 a 4 000 num carro.
 
-A fiação e os pinos ficam no `docs/BANCADA.md` ([#11](https://github.com/V-guard-org/firmware_telemetria/issues/11)).
+A fiação, os pinos e os nomes fixos das portas estão no [`BANCADA.md`](BANCADA.md) (ticket #11).
 
 ### 10.2 Aceite da bancada
 
@@ -275,13 +277,14 @@ Antes de testar o firmware, a bancada precisa passar nos aceites do [#2](https:/
 |---|---|---|
 | Sem ACK | Tirar da linha o adaptador e o gerador; o ESP32 fica sozinho, porque qualquer outro nó daria o ACK | DESCOBRINDO → SEM_RESPOSTA, sem FALHA_CAN; nova pergunta a cada 2 s |
 | Velocidade errada, com tráfego | Gerador de tráfego a 250 kbit/s | VELOCIDADE_ERRADA a cada 10 s; `obd_enviadas` = 0 |
-| Velocidade errada, barramento mudo | Gerador desligado e adaptador a 250 kbit/s | DESCOBRINDO → FALHA_CAN, três vezes → BLOQUEADO em cerca de 22 s; `obd_enviadas` = 3 |
+| Velocidade errada, barramento mudo | Gerador fora da linha e adaptador a 250 kbit/s | DESCOBRINDO → FALHA_CAN, três vezes → BLOQUEADO em cerca de 22 s; `obd_enviadas` = 3 |
 | *Error passive* na leitura | Em LENDO, trocar o adaptador para 250 kbit/s | FALHA_CAN em cerca de 1 s, antes da regra dos 2 s; volta a ESCUTANDO depois de 10 s |
 | Linha presa | Ligar a linha ao GND. É seguro: passam 3,3 mA pelo *pull-up*, e os diodos ficam reversos | LINHA_PRESA a cada 10 s; `obd_enviadas` não muda |
 | Carro com tráfego e disputa perdida | Gerador a 500 kbit/s, com cerca de 50% de carga, durante 10 min de leitura | ESCUTANDO → DESCOBRINDO (quadros válidos); LENDO por 10 min; nenhum PID some da amostra; nenhum LOG de fila de eventos cheia |
 | Pi ausente | `falhas.txt` (`pi ping desliga`) | ESPERANDO_PI depois de 3 s; GPIO27 em 1 (§10.4) |
 | Watchdog | Build de teste com `VGUARD_TEST_HANG_S` | Reinício em cerca de 3 s; STATUS com `reinicio` = 5; OBD em ESPERANDO_PI; GPIO27 nunca em 0 (§10.4) |
 
+- **Tirar uma placa da linha** é tirar o diodo dela da protoboard e o fio do RX, com a placa ainda no USB. Uma placa sem energia nunca fica na linha ([`BANCADA.md` §3.3](BANCADA.md)).
 - Os dois casos de velocidade errada provam juntos que o PCNT e o TWAI leem o GPIO26 ao mesmo tempo: o PCNT conta as transições, e o TWAI, os quadros válidos.
 - O *bus-off* não é provocado na bancada: na leitura, o *error passive* chega antes e já leva a FALHA_CAN. Ele se prova com a porta falsa ([`PLATAFORMA.md` §6](PLATAFORMA.md)).
 
@@ -299,7 +302,7 @@ O osciloscópio fica no laboratório, então todas as medidas são feitas numa �
 | `esp_restart()` e pane | GPIO27, disparo único na descida | Nenhum pulso em 0 durante o reinício; a pane vem do build de teste |
 | Pi ausente | GPIO27 | Volta a 1 até 3 s depois do último PING |
 
-Na bancada não há transceptor: mede-se o pino, que é o que o firmware controla. O transceptor real é conferido no carro.
+Na bancada de diodos não há transceptor: mede-se o pino, que é o que o firmware controla. Um resistor de 10 kΩ na protoboard segura o GPIO27 em 1 quando o firmware o solta, como o resistor do transceptor faria; sem ele, o pino ficaria solto e a medida não valeria ([`BANCADA.md` §4](BANCADA.md)). Os pontos de prova estão no [`BANCADA.md` §10](BANCADA.md). O transceptor real é conferido na sessão com transceptor (§10.7).
 
 ### 10.5 Ensaio
 
@@ -312,19 +315,31 @@ Ensaio de 2 h e de 30 min nas taxas máximas, pelo USB (§6).
 - [ ] sessão de osciloscópio (§10.4);
 - [ ] ensaio de 2 h e de 30 min (§6).
 
+### 10.7 Sessão com transceptor
+
+Quando os TJA1051T/3 chegarem, uma sessão curta, de 1 a 2 h, troca os diodos por dois transceptores: um na placa do firmware e outro no adaptador ([`BANCADA.md` §9](BANCADA.md)). Ela prova o que a bancada de diodos não prova: o receptor funcionando com o transceptor silencioso, que é o que a escuta usa, e o jumper do GPIO27 cortando a transmissão de verdade.
+
+- [ ] leitura normal, com um roteiro e o `confere`;
+- [ ] VELOCIDADE_ERRADA com o adaptador a 250 kbit/s e tráfego, o que prova o receptor durante a escuta;
+- [ ] com o jumper aberto, nenhuma requisição nossa no `candump`;
+- [ ] sem a Pi, nenhum quadro do ESP32 no `candump` no boot, no reinício e na pane do build de teste.
+
+A sessão não faz parte da passagem para a fase 4. É um passo obrigatório antes do carro (§12), porque completa o item de segurança do transceptor silencioso (§2).
+
 ## 11. Fase 3: a Pi
 
 **Nosso:**
 - [ ] `python3 -m unittest discover -s host` passa no Python da Pi, sem instalar nada;
-- [ ] **laço da UART5:** um fio do pino 32 (TX) ao 33 (RX) e 1 MB a 460800 baud, com `python3 host/link_test.py --laco --porta /dev/ttyAMA5`, sem nenhum erro. Isso prova o `dtoverlay` e a velocidade antes de ligar o ESP32.
+- [ ] **laço da UART5:** um fio do pino 32 (TX) ao 33 (RX) e 1 MB a 460800 baud, com `python3 host/link_test.py --laco --porta /dev/ttyAMA5`, sem nenhum erro. Isso prova o `dtoverlay` e a velocidade antes de ligar o ESP32 ([`BANCADA.md` §6](BANCADA.md)).
 
 **Sugestão para a Isabela,** porque o código é dela: o leitor dela com o ESP32 falso (`host/fake_esp32.py`) por 10 min, com amostras chegando ao `EventManager` e nenhuma exceção.
 
 ## 12. Fase 4: integração (T40, 05/11)
 
-O ESP32 fica ligado à Pi pelos fios. O notebook roda o simulador com `--so-carro`: manda a IMU_SIM pelo USB e responde no `can0` ([ADR-0009](adr/0009-imu-sim-pelo-usb-na-fase-4.md)).
+O ESP32 fica ligado à Pi pelos fios da UART2, com o fio de 5 V desligado enquanto o USB estiver ligado ([`BANCADA.md` §7](BANCADA.md)). O notebook roda o simulador com `--so-carro`: manda a IMU_SIM pelo USB e responde no `can0` ([ADR-0009](adr/0009-imu-sim-pelo-usb-na-fase-4.md)).
 
 **Passagem para o carro:**
+- [ ] sessão com transceptor (§10.7);
 - [ ] ensaio de 2 h e de 30 min pelos fios, com o `link_test.py` na Pi (§6). É o T24.2;
 - [ ] medição do horário com o fio, por 30 min (§7.2). É a parte do firmware no T41;
 - [ ] todos os itens de segurança provados (§2).
@@ -378,7 +393,7 @@ Pendências: …
 
 ## 16. Fora deste documento
 
-- **[#11](https://github.com/V-guard-org/firmware_telemetria/issues/11):** a fiação da bancada de três placas, os pinos do fio do horário (um GPIO livre no ESP32 e outro na Pi) e o fio do laço da UART5.
+- **[`BANCADA.md`](BANCADA.md)** (ticket #11): a fiação da bancada de três placas, os nomes fixos das portas, o fio do horário, o laço da UART5, os fios até a Pi e a montagem da sessão com transceptor.
 - **Ensaio no carro:** um ticket próprio, quando o carro for definido (§13).
 - **Leitor da Isabela:** os testes do código dela; aqui só há uma sugestão (§11).
 - **T41 da equipe:** os horários da câmera e do GPS são de quem cuida deles. Daqui sai só o número do ESP32 (§7.2).

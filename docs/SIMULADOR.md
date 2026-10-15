@@ -41,8 +41,8 @@ A IMU_SIM e o decodificador escrevem na mesma porta: um único descritor, aberto
 | Fase | Firmware | CAN da ECU simulada | Porta | Papéis do simulador |
 |---|---|---|---|---|
 | 1 · notebook | Nativo, iniciado pelo simulador | `vcan0` | `/tmp/vguard-esp32` | Carro, Pi e tela |
-| 2 · bancada | ESP32 | `can0`, pelo adaptador USB-CAN com `slcand` ([#3](https://github.com/V-guard-org/firmware_telemetria/issues/3)) | `/dev/ttyUSB0` | Carro, Pi e tela |
-| 4 · integração, com a IMU simulada | ESP32, ligado à Pi pelos fios | `can0` | USB, só com a IMU_SIM (ADR-0009) | Só o carro e a tela; a Pi de verdade faz o resto |
+| 2 · bancada | ESP32 | `can0`, pelo adaptador USB-CAN com `slcand` ([#3](https://github.com/V-guard-org/firmware_telemetria/issues/3)) | `/dev/vguard-esp32` ([`BANCADA.md` §5](BANCADA.md)) | Carro, Pi e tela |
+| 4 · integração, com a IMU simulada | ESP32, ligado à Pi pelos fios | `can0` | `/dev/vguard-esp32`, o USB, só com a IMU_SIM (ADR-0009) | Só o carro e a tela; a Pi de verdade faz o resto |
 
 ## 2. O laço
 
@@ -225,7 +225,7 @@ Com `--gravar sessao.jsonl`, com ou sem tela, o programa grava uma linha por aç
 
 | Opção | Padrão | Função |
 |---|---|---|
-| `--porta CAMINHO` | `/tmp/vguard-esp32` | A porta do firmware; na fase 2, `/dev/ttyUSB0` |
+| `--porta CAMINHO` | `/tmp/vguard-esp32` | A porta do firmware; nas fases 2 e 4, `/dev/vguard-esp32` |
 | `--can CANAL` | `vcan0` | O canal da ECU simulada; na fase 2, `can0` |
 | `--firmware CAMINHO` | — | Fase 1: inicia o firmware nativo como processo filho, o que permite "Reiniciar o ESP32" |
 | `--http-port N` | 8080 | A porta da tela, só em `127.0.0.1` |
@@ -275,6 +275,6 @@ host/
 ## 11. Fora deste documento
 
 - **[`TESTES.md`](TESTES.md)** (ticket #13): o ensaio de 2 h com `--sem-tela`, o `confere`, o roteiro das falhas de CAN na bancada e a conferência do reinício pelo RTS.
-- **[#11](https://github.com/V-guard-org/firmware_telemetria/issues/11):** a UART do ESP32 para os fios da Pi, que não pode ser a UART0, e a alimentação com o USB e os fios ligados ao mesmo tempo (ADR-0009).
+- **[`BANCADA.md`](BANCADA.md)** (ticket #11): as três placas da bancada, os nomes fixos das portas e, na fase 4, os fios até a Pi pela UART2, com o fio de 5 V desligado enquanto o USB estiver ligado (ADR-0009).
 - **Dashboard e servidor:** são do backend, fora do mapa do firmware. O simulador não manda nada a eles.
 - **Rastreamento:** a posição vem do GPS, ligado na Pi (T16, Nicolas). O simulador não simula posição (#9 Q15).

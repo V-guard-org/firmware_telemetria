@@ -238,6 +238,7 @@ O corpo tem 13 bytes, a mensagem inteira 20, e no cabo são 22.
 
 - **Valores.** São uma leitura no referencial do sensor. O ESP32 gira para o referencial do carro, como faz com a IMU real; até o T11, essa rotação é a identidade.
 - **Ritmo.** O simulador envia 100 por segundo, uma por leitura. A IMU simulada devolve o último valor recebido a cada leitura.
+- **Cabeçalho.** O `boot` vale 0, como nas mensagens da Pi. A IMU_SIM tem um `seq` próprio, separado do que o decodificador dá ao PING e ao TAXAS. O ESP32 só devolve o `seq` do PING (emenda do #20).
 - **Caminho.** Nas fases 1 e 2, pelo mesmo cabo do protocolo. Na fase 4, pelo USB (UART0), separada dos fios da Pi (ADR-0009).
 - **Falhas.** Com `falha` = 1, ou sem nenhuma IMU_SIM há mais de 1 s, a leitura falha. Depois de 10 falhas seguidas, a IMU entra em FALHA ([`MAQUINAS-DE-ESTADO.md` §3](MAQUINAS-DE-ESTADO.md)).
 - **Firmware sem IMU simulada.** A mensagem soma 1 em `rejeitadas`.

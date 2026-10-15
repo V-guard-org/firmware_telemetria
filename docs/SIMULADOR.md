@@ -52,6 +52,8 @@ Uma thread faz `select()` na porta e no socket CAN, com prazo até o próximo ti
 3. escreve uma IMU_SIM, a menos que "Parar a 0x83" esteja ligado;
 4. passa ao `feed()` os bytes lidos da porta e escreve logo o que o `data_to_send()` devolve ([`DECODIFICADOR.md` §2.2](DECODIFICADOR.md)).
 
+*Emenda do #20 (15/10/2026).* Os bytes que chegam entre dois tiques vão ao `feed()` na hora, e o `data_to_send()` sai logo depois. Assim, a chegada do PONG é o instante da leitura, e não o tique seguinte, que somaria até 10 ms à ida e volta. No tique, a ordem continua a de cima.
+
 A ECU simulada não espera o tique: cada requisição lida do socket ganha uma resposta marcada para daqui a "atraso da resposta", e o `select()` acorda nesse prazo.
 
 *Emenda da spec da fase 1 (15/10/2026).* A ECU simulada não abre o socket, como o `Decoder` não abre a porta. Ela recebe um quadro de requisição e o instante, e devolve os quadros de resposta, cada um com o instante em que deve sair. Quem lê e escreve no socket é este laço. Assim, a mesma ECU serve no `vcan0` e no `can0`, e os testes dela rodam sem o `vcan0`, que pede sudo ([`TESTES.md` §3.2](TESTES.md)).
@@ -177,8 +179,9 @@ Um roteiro é um arquivo de texto em `host/roteiros/`, com uma ação por linha:
 ```
 
 - Os comandos são os mesmos botões da tela, em português, porque o roteiro é feito para a equipe ler e editar.
-- `#` começa um comentário. `fim` marca o fim; sem ele, o roteiro termina 5 s depois da última ação.
+- `#` começa um comentário, no início ou no fim da linha. `fim` marca o fim; sem ele, o roteiro termina 5 s depois da última ação.
 - Um roteiro com uma linha que o programa não entende não roda; a mensagem diz o número da linha.
+- *Emenda do #20.* Também não roda, com o número da linha: um tempo menor que o da linha anterior, uma linha depois do `fim` e um valor fora da faixa. O acelerador e o freio vão de 0% a 100%, e o volante, de −100% a +100%, sempre com o `%`. Um roteiro sem nenhuma ação não roda.
 
 | Comando | Exemplo |
 |---|---|
@@ -221,6 +224,13 @@ Sem a tela, o programa roda o roteiro e, ao fim, imprime um resumo, também como
 
 O programa termina com código de saída 1 se algum `confere` ou algum critério falhou (emenda do #13).
 
+*Emenda do #20 (15/10/2026):*
+- **Saída.** O registro (as linhas do roteiro, o resultado de cada `confere`, as mudanças do STATUS, as amostras vazias e os LOGs do ESP32) sai na saída padrão, uma linha por fato, com o tempo do simulador. O resumo vem no fim, e a linha JSON é sempre a última. A saída do firmware nativo continua na saída de erro.
+- **Códigos de saída.** 0 se tudo deu certo. 1 se algum `confere` falhou ou se a corrida quebrou: a porta fechou, ou o firmware terminou sozinho. 2 se nada rodou: uma opção errada, ou uma linha do roteiro que o programa não entende.
+- **O firmware filho** roda numa sessão própria: um Ctrl+C para o simulador, e o simulador para o firmware. Para reiniciar, o simulador fecha a porta, manda SIGTERM ao firmware (SIGKILL depois de 2 s), apaga um atalho que tenha sobrado, inicia o firmware de novo, espera o atalho novo e reabre a porta. A porta é aberta com `TCSANOW`, e não com o `TCSAFLUSH` do `tty.setraw()`, para não perder o STATUS do boot.
+- **Até a tela (#27),** o `--sem-tela` é obrigatório. Um roteiro com `reinicia esp32` pede `--firmware`, até existir o pulso no RTS da fase 2.
+- **Até a IMU simulada (#21),** o firmware nativo soma cada IMU_SIM em `rejeitadas` ([`PROTOCOLO.md` §4.3](PROTOCOLO.md)), cerca de 100 por segundo.
+
 Com `--gravar sessao.jsonl`, com ou sem tela, o programa grava uma linha por ação, por amostra entregue e por STATUS, e o estado do modelo 10 vezes por segundo.
 
 ## 8. Linha de comando
@@ -234,7 +244,7 @@ Com `--gravar sessao.jsonl`, com ou sem tela, o programa grava uma linha por aç
 | `--roteiro ARQUIVO` | — | Roda o roteiro ao iniciar |
 | `--repetir` | não | Recomeça o roteiro ao terminar |
 | `--sem-tela` | não | Sem servidor; imprime o resumo ao fim (§7) |
-| `--duracao TEMPO` | — | Tempo total, como `2h` ou `30min` |
+| `--duracao TEMPO` | — | Tempo total, como `2h`, `30min`, `90s` ou `1h30min`. Com um roteiro, a corrida acaba no que vier primeiro. |
 | `--gravar ARQUIVO` | — | Grava a sessão em JSONL |
 | `--duas-centrais` | não | Acrescenta uma 2ª central em `0x7E9` (abaixo) |
 | `--so-carro` | não | Fase 4 (ADR-0009): não faz o papel da Pi; só envia a IMU_SIM e responde no CAN |

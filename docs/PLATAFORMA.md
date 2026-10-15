@@ -158,6 +158,11 @@ Se uma das duas falhar, o que só acontece por defeito no código:
 
 O teste automático da lista fechada roda no portão. A plataforma não confere de novo.
 
+*Emenda do #23 (15/10/2026):*
+- **Quem conta e quem avisa.** O portão conta os quadros barrados, e o STATUS mostra essa conta em `bloqueadas`. A cada quadro barrado, ele avisa o núcleo, com o quadro e com a indicação de se o transceptor estava liberado. O núcleo manda o LOG de erro, com o ID, o DLC e os bytes do quadro. Com o OBD (#25), o núcleo também o leva a BLOQUEADO.
+- **No boot, o transceptor está silencioso:** até o 1º `talk()`, todo quadro é barrado.
+- **O caminho do LOG.** O núcleo ganhou o corpo do LOG ([`PROTOCOLO.md` §3.5](PROTOCOLO.md)) e já manda como LOG os avisos e os erros da plataforma (`on_platform_log`). O limite de 10 por segundo e os avisos do próprio núcleo continuam no #22.
+
 ### 3.3 Porta da UART
 
 | Operação | O que faz |

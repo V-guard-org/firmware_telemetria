@@ -71,6 +71,21 @@ static void test_ping_example_encodes_byte_by_byte() {
     TEST_ASSERT_EQUAL_HEX8_ARRAY(kPingWire, wire, len);
 }
 
+static void test_log_body_has_t_us_level_and_text_cut_at_200_bytes() {
+    // §3.5: t_us 2 000 000, nível 1 (erro), e o texto ocupa o resto.
+    const uint8_t expected[] = {0x80, 0x84, 0x1E, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 'a', 'b', 'c'};
+    uint8_t body[kMaxBody];
+    const size_t len = build_log_body(2'000'000, LogLevel::kError, "abc", body);
+    TEST_ASSERT_EQUAL(sizeof(expected), len);
+    TEST_ASSERT_EQUAL_HEX8_ARRAY(expected, body, len);
+
+    char long_text[300];
+    std::memset(long_text, 'x', sizeof(long_text) - 1);
+    long_text[sizeof(long_text) - 1] = '\0';
+    TEST_ASSERT_EQUAL(9 + 200, build_log_body(0, LogLevel::kWarning, long_text, body));
+    TEST_ASSERT_EQUAL_HEX8(0x02, body[8]);
+}
+
 // Passa os bytes ao leitor e devolve o resultado do último byte.
 static MessageReader::Result push_all(MessageReader& reader, const uint8_t* data, size_t len) {
     MessageReader::Result result = MessageReader::Result::kPending;
@@ -185,6 +200,7 @@ int main() {
     UNITY_BEGIN();
     RUN_TEST(test_crc_of_the_check_string);
     RUN_TEST(test_ping_example_encodes_byte_by_byte);
+    RUN_TEST(test_log_body_has_t_us_level_and_text_cut_at_200_bytes);
     RUN_TEST(test_imu_example_encodes_byte_by_byte);
     RUN_TEST(test_obd_example_encodes_byte_by_byte);
     RUN_TEST(test_ping_example_decodes);

@@ -19,7 +19,7 @@ Os testes que usam esta montagem estão no [`TESTES.md`](TESTES.md). Os termos s
 - **Fase 4:** os fios da Pi saem da UART2 do ESP32 (TX = GPIO17, RX = GPIO16), com 1 kΩ em série em cada fio. O fio do horário vai do GPIO18 do ESP32 ao GPIO16 da Pi, no pino 36 (§7).
 - **Uma fonte só:** com o USB ligado, o fio de 5 V da Pi fica desligado (§7.2).
 - **IMU real:** I²C no GPIO21 (SDA) e GPIO22 (SCL); o GPIO34 fica reservado para o sinal de dado pronto (§8).
-- **Sessão com transceptor:** quando os TJA1051T/3 chegarem, uma sessão curta prova o modo silencioso e o jumper do GPIO27 antes do carro (§9).
+- **Sessão com transceptor:** os transceptores são o TJA1050 dos módulos MCP2515 + TJA1050 já comprados, com o MCP2515 tirado da placa ([ADR-0010](adr/0010-do-modulo-can-so-o-transceptor.md)). Com os módulos preparados, uma sessão curta prova o modo silencioso e o jumper do GPIO27 antes do carro (§9).
 
 ## 1. Peças
 
@@ -36,10 +36,12 @@ Nada desta lista foi conferido ainda. A coluna "Na mão" fica para quem montar.
 | Jumpers de 10 cm (macho-fêmea e macho-macho) | ~20 | Das placas à protoboard | a conferir |
 | Hub USB de 4 portas | 1 | As três placas no mesmo hub, com as portas etiquetadas (§5) | a conferir |
 | Fusível rearmável (PTC) de 0,5 A | 1 | No fio de 5 V da Pi, na fase 4 (#5) | a conferir |
-| **TJA1051T/3**, de preferência num módulo com o pino S acessível, como o Adafruit CAN Pal | 3 | Carro, adaptador (bancada e testemunha no carro) e reserva (#4). Dois deles vão para a sessão do §9 | a conferir |
-| Resistor de 10 kΩ, para os transceptores | 4 | O *pull-up* do TXD e o do S em cada um dos dois transceptores da sessão (§9) | a conferir |
+| **Módulo MCP2515 + TJA1050**, do qual só o TJA1050 é usado ([ADR-0010](adr/0010-do-modulo-can-so-o-transceptor.md)) | 3 | Carro, adaptador (bancada e testemunha no carro) e reserva. Dois deles vão para a sessão do §9 | comprados, a caminho |
+| Resistor de 10 kΩ, para os módulos | 9 | Em cada módulo: o *pull-up* do TXD, o do S e a metade de cima do divisor do RXD (§9.2) | a conferir |
+| Resistor de 20 kΩ | 3 | A metade de baixo do divisor do RXD, um por módulo (§9.2) | a conferir |
 | Jumper de 2 pinos | 2 | JP1 na placa do firmware e JP2 no adaptador (§9) | a conferir |
-| Resistor de 120 Ω | 2 | A terminação, se o módulo não tiver | a conferir |
+| Resistor de 120 Ω | 2 | Só se faltar o jumper J1 de terminação do módulo | a conferir |
+| Ferro de solda de ponta fina | 1 | Preparar os módulos (§9.1) | a comprar |
 | Par trançado, ~50 cm | 1 | CANH e CANL na sessão do §9 | a conferir |
 
 ## 2. Pinos do ESP32
@@ -55,11 +57,11 @@ Nada desta lista foi conferido ainda. A coluna "Na mão" fica para quem montar.
 | 21 | SDA da IMU | IMU real | quando chegar |
 | 22 | SCL da IMU | IMU real | quando chegar |
 | 25 | TX do TWAI | Catodo do diodo dela; TXD do transceptor no §9 | 2 em diante |
-| 26 | RX do TWAI e contador de pulsos (PCNT) | Linha; RXD do transceptor no §9 | 2 em diante |
+| 26 | RX do TWAI e contador de pulsos (PCNT) | Linha; RXD do transceptor no §9, pelo divisor de 10 kΩ e 20 kΩ | 2 em diante |
 | 27 | Trava do transceptor | 10 kΩ e LED na protoboard (§4); pino S pelo JP1 no §9 | 2 em diante |
 | 34 | Reservado: dado pronto (INT) da IMU | Nada, por enquanto | — |
 | 3V3 | 3,3 V | *Pull-up* da linha, do GPIO27 e LED; IMU | 2 em diante |
-| 5V (ou VIN) | Entrada de 5 V | Fio de 5 V da Pi, **só sem o USB** (§7.2) | 4 |
+| 5V (ou VIN) | 5 V | Fio de 5 V da Pi, **só sem o USB** (§7.2). Com o USB, alimenta o VCC do módulo CAN no §9 | 2 (§9) e 4 |
 | GND | — | Trilha GND da protoboard; pino 34 da Pi | todas |
 
 **Pinos que não servem** ([pesquisa do #4](https://github.com/V-guard-org/firmware_telemetria/issues/4)): 0, 2, 5, 12 e 15 decidem o modo de boot; 6 a 11 são da memória flash; 34 a 39 só servem como entrada. Na placa, os pinos às vezes aparecem como "D25" ou "IO25".
@@ -299,31 +301,52 @@ Na bancada de diodos, o firmware controla o GPIO27, mas não há transceptor par
 - se o receptor funciona com o transceptor silencioso, que é o que a escuta de 1 s usa;
 - se o jumper JP1 e os resistores do pino S foram montados certo.
 
-Por isso, quando os TJA1051T/3 chegarem, uma sessão curta, de 1 a 2 h, monta dois deles: um na placa do firmware e um no adaptador. Depois, a bancada volta aos diodos.
+Por isso, uma sessão curta, de 1 a 2 h, monta dois módulos preparados: um na placa do firmware e um no adaptador. Ela pode entrar nos ensaios da fase 2, logo que os módulos estiverem prontos. Depois, a bancada volta aos diodos.
 
-### 9.1 Montagem
+Os transceptores são o TJA1050 dos módulos MCP2515 + TJA1050 que a equipe comprou ([ADR-0010](adr/0010-do-modulo-can-so-o-transceptor.md)). Eles entram no lugar dos TJA1051T/3 da pesquisa do [#4](https://github.com/V-guard-org/firmware_telemetria/issues/4).
 
-Circuito da [pesquisa do #4](https://github.com/V-guard-org/firmware_telemetria/issues/4):
+### 9.1 Preparar o módulo
 
-| Transceptor | Placa do firmware | Adaptador USB-CAN |
+O módulo traz o MCP2515, o chip maior, de 18 pernas, e o TJA1050, de 8 pernas. O TXD e o RXD do TJA1050 estão ligados ao MCP2515, que mantém a saída dele em nível alto mesmo parado, em qualquer modo. Ligado junto com o ESP32, ele brigaria com o TX do ESP32. Por isso o MCP2515 sai da placa.
+
+Começar pelo módulo de reserva:
+
+1. **Conferir com o multímetro, com o módulo desligado:**
+   - se o pino 8 (S) do TJA1050 tem continuidade com o GND;
+   - se o jumper J1, de 120 Ω, está presente.
+2. **Tirar o MCP2515.** Cortar as pernas rente ao corpo com o alicate de corte, tirar o corpo e limpar as ilhas com o ferro de ponta fina e a malha.
+3. **Achar as ilhas dos fios.** A ilha do pino 1 do MCP2515 (TXCAN) deve ir ao pino 1 (TXD) do TJA1050, e a do pino 2 (RXCAN) ao pino 4 (RXD). Conferir com o multímetro, porque o desenho da placa pode variar. Os fios do TXD e do RXD são soldados nessas ilhas, maiores que as pernas do TJA1050.
+4. **Soltar o pino S do GND,** se ele estiver ligado. Aquecer a perna 8 e erguê-la da ilha com uma agulha, ou cortar a trilha rente a ela. Depois, soldar um fio na perna 8.
+5. **Medir de novo:**
+   - a perna 8 não tem mais continuidade com o GND;
+   - com o J1 posto, há cerca de 120 Ω entre o CANH e o CANL.
+
+Os pinos do SPI do módulo (CS, SO, SI, SCK e INT) ficam soltos.
+
+### 9.2 Montagem
+
+| TJA1050 | Placa do firmware | Adaptador USB-CAN |
 |---|---|---|
-| TXD | GPIO25, com 10 kΩ para o 3,3 V | GPIO26, com 10 kΩ para o 3,3 V |
-| RXD | GPIO26 | GPIO25 |
-| S | GPIO27 pelo jumper **JP1**, com 10 kΩ para o 3,3 V | GND pelo jumper **JP2**, com 10 kΩ para o 3,3 V |
-| VIO | 3,3 V | 3,3 V |
+| TXD (ilha 1 do MCP2515) | GPIO25, com 10 kΩ para o 3,3 V | GPIO26, com 10 kΩ para o 3,3 V |
+| RXD (ilha 2 do MCP2515) | GPIO26, por 10 kΩ em série, com 20 kΩ do GPIO26 ao GND | GPIO25, pelo mesmo divisor |
+| S (perna 8) | GPIO27 pelo jumper **JP1**, com 10 kΩ para o 3,3 V | GND pelo jumper **JP2**, com 10 kΩ para o 3,3 V |
 | VCC | 5 V (pino 5V ou VIN da placa) | 5 V |
 | GND | GND | GND |
-| CANH, CANL | Par trançado até o adaptador | Par trançado até o firmware |
+| CANH, CANL (borne do módulo) | Par trançado até o adaptador | Par trançado até o firmware |
 
 - **JP1 aberto:** o S fica em 3,3 V, e o transceptor do firmware fica silencioso, seja qual for o firmware. **JP1 fechado:** o GPIO27 manda.
 - **JP2 fechado:** o adaptador fica em modo normal, para responder e dar ACK na bancada. **JP2 aberto:** o adaptador só escuta, que é o papel de testemunha no carro ([`TESTES.md` §13](TESTES.md)).
-- **Terminação:** 120 Ω em cada ponta, pelo resistor do módulo ou um avulso. Com tudo desligado, deve dar cerca de 60 Ω entre o CANH e o CANL.
-- **No Adafruit CAN Pal,** o módulo só precisa de 3,3 V (ele gera os 5 V), o pino S se chama SLNT, e a terminação tem uma chave. O resistor de 10 kΩ do S precisa ser posto por fora: o módulo não tem.
+- **O resistor do S não pode faltar.** Com o pino S solto, o TJA1050 fica em modo normal e transmite. O nível alto vale a partir de 2,0 V, então o 3,3 V basta.
+- **O divisor do RXD também não.** O TJA1050 só funciona de 4,75 a 5,25 V, e o RXD sai na tensão de alimentação. O divisor baixa os 5 V para cerca de 3,3 V, porque o ESP32 não aceita 5 V. O TXD e o S aceitam os 3,3 V do ESP32 direto.
+- **5 V pelo USB:** medir o pino 5V da placa com o módulo ligado. Se a placa tiver diodo na entrada do USB, ele pode ficar abaixo de 4,75 V. Nesse caso, alimentar os módulos por uma fonte de 5 V, com o GND comum.
+- **Antes de ligar no ESP32,** com o módulo alimentado e o JP1 aberto:
+  - o S marca cerca de 3,3 V;
+  - com o barramento parado, a saída do divisor do RXD marca cerca de 3,3 V e nunca 5 V.
+- **Terminação:** o jumper J1 posto nos dois módulos. Com tudo desligado, deve dar cerca de 60 Ω entre o CANH e o CANL. **No carro, o J1 sai,** porque o barramento do carro já tem terminação.
 - O fio do GPIO27 continua na coluna da protoboard, com o LED e o resistor de 10 kΩ, e um fio sai dessa coluna para o JP1. Assim o LED mostra o que o firmware quer, mesmo com o JP1 aberto.
 - O gerador de tráfego fica fora: ele não tem transceptor.
-- **Se o comprado for o SN65HVD230** (plano B do #4), o pino Rs usa 4,7 kΩ e o módulo precisa de retrabalho, como descreve a pesquisa do #4. A sessão fica ainda mais necessária, porque a TI não garante a recepção no modo de espera.
 
-### 9.2 Testes
+### 9.3 Testes
 
 | Teste | Como | Resultado esperado |
 |---|---|---|

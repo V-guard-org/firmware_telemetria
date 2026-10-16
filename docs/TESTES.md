@@ -20,7 +20,7 @@ O que se prova está no [`PROTOCOLO.md`](PROTOCOLO.md), no [`MAQUINAS-DE-ESTADO.
 - **Build de teste:** um firmware à parte, que trava de propósito e pulsa um pino. Nunca é o firmware entregue (§8).
 - **Bancada com três placas:** o firmware, o adaptador USB-CAN e um gerador de tráfego, que imita as centrais do carro conversando (§10).
 - **Osciloscópio,** numa única ida ao laboratório, para a subida da linha e o GPIO27 (§10.4).
-- **Sessão com transceptor:** antes do carro, dois TJA1051T/3 na bancada provam o modo silencioso e o jumper do GPIO27 (§10.7).
+- **Sessão com transceptor:** antes do carro, dois módulos com o TJA1050 na bancada provam o modo silencioso e o jumper do GPIO27. O MCP2515 sai dos módulos ([ADR-0010](adr/0010-do-modulo-can-so-o-transceptor.md)) (§10.7).
 - **Resultados** em `docs/ensaios/`, um arquivo por ensaio (§15).
 - **Ensaio no carro:** fica para quando o carro for definido (§13).
 
@@ -35,7 +35,7 @@ O que se prova está no [`PROTOCOLO.md`](PROTOCOLO.md), no [`MAQUINAS-DE-ESTADO.
 | Bancada | Três ESP32 e o notebook | TWAI, falhas do CAN, carga, watchdog, GPIO27 | Fase 2 |
 | Pi | Raspberry Pi | Decodificador no Python da Pi e a UART5 | Fase 3 |
 | Integração | ESP32, Pi e notebook | A ligação pelos fios e o horário (T40, T41) | Fase 4 |
-| Sessão com transceptor | Placa do firmware e adaptador com TJA1051T/3 | O modo silencioso de verdade e o jumper do GPIO27 | Antes do carro |
+| Sessão com transceptor | Placa do firmware e adaptador com o TJA1050 dos módulos | O modo silencioso de verdade e o jumper do GPIO27 | Fase 2, antes do carro |
 | Carro | O carro do ensaio | Transceptor, centrais de verdade, tempos do grupo 3 (§14) | 25/11 |
 
 ## 2. Passagem de fase e itens de segurança
@@ -329,8 +329,9 @@ Ensaio de 2 h e de 30 min nas taxas máximas, pelo USB (§6).
 
 ### 10.7 Sessão com transceptor
 
-Quando os TJA1051T/3 chegarem, uma sessão curta, de 1 a 2 h, troca os diodos por dois transceptores: um na placa do firmware e outro no adaptador ([`BANCADA.md` §9](BANCADA.md)). Ela prova o que a bancada de diodos não prova: o receptor funcionando com o transceptor silencioso, que é o que a escuta usa, e o jumper do GPIO27 cortando a transmissão de verdade.
+Com os módulos preparados ([`BANCADA.md` §9.1](BANCADA.md)), uma sessão curta, de 1 a 2 h, troca os diodos por dois transceptores: um na placa do firmware e outro no adaptador ([`BANCADA.md` §9.2](BANCADA.md)). Ela prova o que a bancada de diodos não prova: o receptor funcionando com o transceptor silencioso, que é o que a escuta usa, e o jumper do GPIO27 cortando a transmissão de verdade.
 
+- [ ] antes de ligar no ESP32: com o JP1 aberto, o pino S em cerca de 3,3 V e a saída do divisor do RXD em cerca de 3,3 V, nunca 5 V;
 - [ ] leitura normal, com um roteiro e o `confere`;
 - [ ] VELOCIDADE_ERRADA com o adaptador a 250 kbit/s e tráfego, o que prova o receptor durante a escuta;
 - [ ] com o jumper aberto, nenhuma requisição nossa no `candump`;
@@ -359,7 +360,7 @@ O ESP32 fica ligado à Pi pelos fios da UART2, com o fio de 5 V desligado enquan
 ## 13. Ensaio no carro
 
 Fica para quando o carro for definido (#13 Q12), num ticket próprio. Ideias já levantadas:
-- **Testemunha:** a placa do adaptador, com um transceptor próprio, só escutando (o comando `L` do Doggie), grava tudo o que passa no barramento. Ela precisa de um 2º TJA1051T/3.
+- **Testemunha:** a placa do adaptador, com o módulo dela, só escutando (o JP2 aberto e o comando `L` do Doggie), grava tudo o que passa no barramento. O jumper J1 de terminação sai dos dois módulos, porque o carro já tem a dele.
 - **Jumper do GPIO27 primeiro tirado:** o resistor trava o transceptor em silencioso, e o firmware só escuta. Depois, com o jumper posto, a descoberta e a leitura.
 - **Quando parar:** um quadro nosso fora da lista na testemunha, uma luz nova no painel ou `bloqueadas` > 0.
 - **Tempos do grupo 3** (§14), conferidos com o arquivo da testemunha.

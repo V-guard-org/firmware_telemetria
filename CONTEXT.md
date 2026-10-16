@@ -224,3 +224,7 @@ _Avoid_: LED de status, LED do CAN
 **Sessão com transceptor**:
 A sessão curta de bancada, antes do carro, em que a placa do firmware e o adaptador usam transceptores de verdade, para provar o modo silencioso e o jumper do GPIO27.
 _Avoid_: teste do transceptor, bancada com transceptor
+
+**Módulo CAN**:
+O módulo MCP2515 + TJA1050 comprado pela equipe. Do módulo, o firmware usa só o TJA1050, como transceptor do CAN interno do ESP32; o MCP2515 sai da placa (ADR-0010).
+_Avoid_: placa MCP2515, shield CAN

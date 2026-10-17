@@ -127,6 +127,9 @@ h3 { font: 700 1.15rem var(--display); letter-spacing: .03em; text-transform: up
 ul.callouts { list-style: none; padding: 0; margin: 10px 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 8px 28px; }
 ul.callouts li { display: flex; align-items: flex-start; gap: 4px; min-width: 0; }
 .ref { margin-top: 76px; }
+.liga td:last-child { width: 48px; }
+.liga td:first-child { width: 46%; }
+table.pinos td:first-child { font: 600 13px var(--mono); white-space: nowrap; }
 footer { margin-top: 72px; border-top: 2px solid var(--ink); padding-top: 12px; color: var(--muted); font: 500 12.5px var(--mono); }
 
 /* Desenhos. Cada classe de cor (c33, ctx…) define --c, e as peças pintam com ela. */
@@ -196,6 +199,7 @@ footer { margin-top: 72px; border-top: 2px solid var(--ink); padding-top: 12px; 
   <div class="howto">
     <div><b>Cor é função</b><p>A mesma cor quer dizer o mesmo tipo de fio em todas as folhas. O TX e o RX são sempre os de uma placa ESP32. Se tiver jumpers dessas cores, use: fica fácil conferir a montagem com a folha.</p></div>
     <div><b>Placa é placa ESP32</b><p>As três placas são iguais (módulo WROOM-32). O que muda entre elas é o programa gravado e os fios.</p></div>
+    <div><b>Toda folha tem a tabela de ligações</b><p>Uma linha por fio: de qual perna de qual peça até qual pino de qual placa. Resistor não tem lado; diodo e LED têm, e a tabela diz qual perna vai onde.</p></div>
     <div><b>Círculo com número é fio</b><p>Na folha 4, cada círculo é a ponta de um fio que vem de uma placa ou da Pi. A tabela embaixo dela diz de onde ele vem.</p></div>
   </div>
 </header>
@@ -205,6 +209,7 @@ footer { margin-top: 72px; border-top: 2px solid var(--ink); padding-top: 12px; 
   <div class="tblwrap"><table>
     <thead><tr><th>Folha</th><th>O que mostra</th><th>Quando se usa</th></tr></thead>
     <tbody>
+      <tr><td>0</td><td><a href="#folha-0">Onde fica cada pino na placa ESP32</a>: os modelos de 30 e de 38 pinos</td><td>Antes do primeiro fio</td></tr>
       <tr><td>1</td><td><a href="#folha-1">A mesa da fase 2</a>: o notebook, o hub e as três placas</td><td>Fase 2</td></tr>
       <tr><td>2</td><td><a href="#folha-2">Barramento de bancada</a>: a LINHA, os diodos e o R1</td><td>Fase 2 em diante</td></tr>
       <tr><td>3</td><td><a href="#folha-3">GPIO27 e o LED de liberação</a>: a trava do transceptor na bancada</td><td>Fase 2 em diante</td></tr>
@@ -235,6 +240,36 @@ footer { margin-top: 72px; border-top: 2px solid var(--ink); padding-top: 12px; 
   <span class="item"><span class="sw thick" style="--c: var(--usb)"></span>cabo USB</span>
 </section>
 
+<section class="sec" id="folha-0">
+  <div class="sec-h"><span class="sheetno">Folha 0</span><h2>Onde fica cada pino na placa ESP32</h2><p class="when">antes do primeiro fio</p></div>
+  <div class="prose">
+    <p>Há dois modelos comuns de placa ESP32: com 30 e com 38 pinos. Conte os pinos da sua e use o desenho certo, com a placa vista de cima e o USB para baixo. Em qualquer modelo, o nome impresso ao lado do pino é o que vale: procure "D25", "IO25" ou só "25". As três placas da bancada são iguais; o que muda é o programa e quais pinos cada uma usa.</p>
+  </div>
+  <figure class="sheet">
+    <div class="scroll">{{pinout}}</div>
+    <figcaption>Os pinos coloridos são os que o projeto usa, na placa do firmware. No adaptador, o GPIO25 e o GPIO26 trocam de papel (TX 26 · RX 25). O TX0 e o RX0 são o USB da própria placa e não levam fio.</figcaption>
+    <div class="carimbo"><div>0</div><div><span>folha</span>Onde fica cada pino na placa ESP32</div><div><span>quando</span>antes do primeiro fio</div><div><span>fonte</span>BANCADA §2</div></div>
+  </figure>
+  <h3>Os pinos usados, placa por placa</h3>
+  <div class="tblwrap"><table class="pinos">
+    <thead><tr><th>Pino</th><th>Placa do firmware</th><th>Adaptador USB-CAN</th><th>Gerador de tráfego</th><th>Folhas</th></tr></thead>
+    <tbody>
+      <tr><td>GPIO25</td><td>TX do CAN</td><td>RX do CAN</td><td>TX do CAN</td><td>2, 4, 8</td></tr>
+      <tr><td>GPIO26</td><td>RX do CAN</td><td>TX do CAN</td><td>RX do CAN</td><td>2, 4, 8</td></tr>
+      <tr><td>GPIO27</td><td>Trava do transceptor: 10 kΩ, LED e JP1</td><td>—</td><td>—</td><td>3, 4, 8</td></tr>
+      <tr><td>GPIO17</td><td>TX2 até o pino 33 da Pi</td><td>—</td><td>—</td><td>6</td></tr>
+      <tr><td>GPIO16</td><td>RX2, do pino 32 da Pi</td><td>—</td><td>—</td><td>6</td></tr>
+      <tr><td>GPIO18</td><td>Pulso até o pino 36 da Pi, só no build de teste</td><td>—</td><td>—</td><td>6</td></tr>
+      <tr><td>GPIO21</td><td>SDA da IMU real</td><td>—</td><td>—</td><td>9</td></tr>
+      <tr><td>GPIO22</td><td>SCL da IMU real</td><td>—</td><td>—</td><td>9</td></tr>
+      <tr><td>GPIO34</td><td>INT da IMU real, reservado</td><td>—</td><td>—</td><td>9</td></tr>
+      <tr><td>3V3</td><td>R1, 10 kΩ e 1 kΩ do LED; na sessão, os resistores do módulo A</td><td>Na sessão, os resistores do módulo B</td><td>—</td><td>2, 3, 4, 8</td></tr>
+      <tr><td>5V / VIN</td><td>Na sessão, o VCC do módulo A; na fase 4, o 5 V da Pi, só sem o USB</td><td>Na sessão, o VCC do módulo B</td><td>—</td><td>6, 8</td></tr>
+      <tr><td>GND</td><td>Trilho GND; pino 34 da Pi; GND do módulo A</td><td>Trilho GND; GND do módulo B</td><td>Trilho GND</td><td>todas</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
 <section class="sec" id="folha-1">
   <div class="sec-h"><span class="sheetno">Folha 1</span><h2>A mesa da fase 2</h2><p class="when">fase 2 · bancada</p></div>
   <div class="prose">
@@ -243,7 +278,7 @@ footer { margin-top: 72px; border-top: 2px solid var(--ink); padding-top: 12px; 
   <figure class="sheet">
     <div class="scroll">{{desk}}</div>
     <figcaption>O notebook vê cada placa por um nome fixo, dado pela porta do hub. Só a placa do firmware leva o 3V3 e o GPIO27 até a protoboard.</figcaption>
-    <div class="carimbo"><div>1/9</div><div><span>folha</span>A mesa da fase 2</div><div><span>quando</span>fase 2</div><div><span>fonte</span>BANCADA §3.1 e §5</div></div>
+    <div class="carimbo"><div>1</div><div><span>folha</span>A mesa da fase 2</div><div><span>quando</span>fase 2</div><div><span>fonte</span>BANCADA §3.1 e §5</div></div>
   </figure>
   <div class="tblwrap"><table>
     <thead><tr><th>Porta do hub</th><th>Placa</th><th>Nome fixo</th><th>Quem abre</th></tr></thead>
@@ -253,7 +288,7 @@ footer { margin-top: 72px; border-top: 2px solid var(--ink); padding-top: 12px; 
       <tr><td class="n">3</td><td>Gerador de tráfego</td><td class="mono">/dev/vguard-gerador</td><td>O monitor serial, para ler os contadores</td></tr>
     </tbody>
   </table></div>
-  <p class="prose">A regra do udev que dá esses nomes, e os comandos para subir o <code>can0</code>, estão no BANCADA.md §5.</p>
+  <p class="prose">A regra do udev que dá esses nomes, e os comandos para subir o <code>can0</code>, estão no BANCADA.md §5. Os fios de cada placa até a protoboard estão, um por um, nas tabelas das folhas 2, 3 e 4.</p>
 </section>
 
 <section class="sec" id="folha-2">
@@ -264,7 +299,7 @@ footer { margin-top: 72px; border-top: 2px solid var(--ink); padding-top: 12px; 
   <figure class="sheet">
     <div class="scroll">{{bus}}</div>
     <figcaption>O TX e o RX nunca se cruzam entre as placas: todo RX vai na LINHA, e todo TX passa por um diodo, com a faixa (o catodo) do lado do TX.</figcaption>
-    <div class="carimbo"><div>2/9</div><div><span>folha</span>Barramento de bancada</div><div><span>quando</span>fase 2 em diante</div><div><span>fonte</span>BANCADA §3 · pesquisa #2</div></div>
+    <div class="carimbo"><div>2</div><div><span>folha</span>Barramento de bancada</div><div><span>quando</span>fase 2 em diante</div><div><span>fonte</span>BANCADA §3 · pesquisa #2</div></div>
   </figure>
   <div class="cols">
     <div class="tblwrap"><table>
@@ -283,6 +318,23 @@ footer { margin-top: 72px; border-top: 2px solid var(--ink); padding-top: 12px; 
       <li><b>Fios de até 10 cm</b> entre cada placa e a protoboard.</li>
     </ul>
   </div>
+  <h3>Ligações desta folha, fio por fio</h3>
+  <div class="tblwrap"><table class="liga">
+  <thead><tr><th>De</th><th>Para</th><th>Fio</th></tr></thead><tbody>
+  <tr><td>Placa do firmware · <b>3V3</b></td><td>R1 · uma perna (resistor não tem lado)</td><td><span class="sw" style="--c: var(--w33)"></span></td></tr>
+  <tr><td>R1 · a outra perna</td><td>LINHA</td><td><span class="sw" style="--c: var(--wline)"></span></td></tr>
+  <tr><td>Placa do firmware · <b>GPIO26</b> (RX)</td><td>LINHA</td><td><span class="sw" style="--c: var(--wrx)"></span></td></tr>
+  <tr><td>Placa do firmware · <b>GPIO25</b> (TX)</td><td>D1 · cátodo, o lado da faixa</td><td><span class="sw" style="--c: var(--wtx)"></span></td></tr>
+  <tr><td>D1 · ânodo, o lado sem faixa</td><td>LINHA</td><td><span class="sw" style="--c: var(--wline)"></span></td></tr>
+  <tr><td>Adaptador · <b>GPIO25</b> (RX)</td><td>LINHA</td><td><span class="sw" style="--c: var(--wrx)"></span></td></tr>
+  <tr><td>Adaptador · <b>GPIO26</b> (TX)</td><td>D2 · cátodo, o lado da faixa</td><td><span class="sw" style="--c: var(--wtx)"></span></td></tr>
+  <tr><td>D2 · ânodo</td><td>LINHA</td><td><span class="sw" style="--c: var(--wline)"></span></td></tr>
+  <tr><td>Gerador · <b>GPIO26</b> (RX)</td><td>LINHA</td><td><span class="sw" style="--c: var(--wrx)"></span></td></tr>
+  <tr><td>Gerador · <b>GPIO25</b> (TX)</td><td>D3 · cátodo, o lado da faixa</td><td><span class="sw" style="--c: var(--wtx)"></span></td></tr>
+  <tr><td>D3 · ânodo</td><td>LINHA</td><td><span class="sw" style="--c: var(--wline)"></span></td></tr>
+  <tr><td>Placa do firmware, adaptador e gerador · <b>GND</b></td><td>GND comum: um fio de cada placa</td><td><span class="sw" style="--c: var(--wgnd)"></span></td></tr>
+  <tr><td>Fio da “linha presa” · uma ponta</td><td>GND. A outra ponta fica solta e só encosta na LINHA durante o teste</td><td><span class="sw" style="--c: var(--wgnd)"></span></td></tr>
+  </tbody></table></div>
 </section>
 
 <section class="sec" id="folha-3">
@@ -293,7 +345,7 @@ footer { margin-top: 72px; border-top: 2px solid var(--ink); padding-top: 12px; 
   <figure class="sheet">
     <div class="scroll">{{gpio27}}</div>
     <figcaption>Com o GPIO27 em 0, a corrente passa pelo 1 kΩ e pelo LED, e o LED acende. Com o pino solto, os dois lados do LED ficam em 3,3 V, e ele apaga.</figcaption>
-    <div class="carimbo"><div>3/9</div><div><span>folha</span>GPIO27 e o LED de liberação</div><div><span>quando</span>fase 2 em diante</div><div><span>fonte</span>BANCADA §4</div></div>
+    <div class="carimbo"><div>3</div><div><span>folha</span>GPIO27 e o LED de liberação</div><div><span>quando</span>fase 2 em diante</div><div><span>fonte</span>BANCADA §4</div></div>
   </figure>
   <div class="tblwrap"><table>
     <thead><tr><th>GPIO27</th><th>Tensão</th><th>LED</th><th>Quer dizer</th></tr></thead>
@@ -303,6 +355,16 @@ footer { margin-top: 72px; border-top: 2px solid var(--ink); padding-top: 12px; 
     </tbody>
   </table></div>
   <p class="prose">Exemplo: no roteiro "Pi ausente", o LED apaga até 3 s depois do último PING. Dá para ver isso sem o osciloscópio.</p>
+  <h3>Ligações desta folha, fio por fio</h3>
+  <div class="tblwrap"><table class="liga">
+  <thead><tr><th>De</th><th>Para</th><th>Fio</th></tr></thead><tbody>
+  <tr><td>Placa do firmware · <b>3V3</b></td><td>10 kΩ · uma perna</td><td><span class="sw" style="--c: var(--w33)"></span></td></tr>
+  <tr><td>10 kΩ · a outra perna</td><td>Placa do firmware · <b>GPIO27</b></td><td><span class="sw" style="--c: var(--w27)"></span></td></tr>
+  <tr><td>Placa do firmware · <b>3V3</b></td><td>1 kΩ · uma perna</td><td><span class="sw" style="--c: var(--w33)"></span></td></tr>
+  <tr><td>1 kΩ · a outra perna</td><td>LED · ânodo (+), a perna longa</td><td><span class="sw" style="--c: var(--ink)"></span></td></tr>
+  <tr><td>LED · cátodo (−), a perna curta, do lado chato</td><td>Placa do firmware · <b>GPIO27</b></td><td><span class="sw" style="--c: var(--w27)"></span></td></tr>
+  <tr><td>Placa do firmware · <b>GPIO27</b></td><td>JP1 · um dos pinos, só na sessão com transceptor (folha 8)</td><td><span class="sw" style="--c: var(--w27)"></span></td></tr>
+  </tbody></table></div>
 </section>
 
 <section class="sec" id="folha-4">
@@ -313,7 +375,7 @@ footer { margin-top: 72px; border-top: 2px solid var(--ink); padding-top: 12px; 
   <figure class="sheet">
     <div class="scroll">{{breadboard}}</div>
     <figcaption>Os diodos ficam com a faixa para cima, do lado da coluna do TX. O R1 vai do trilho 3V3 à coluna 24, e um fio leva a coluna 24 ao trilho LINHA. O fio da coluna 1 liga os dois trilhos de GND.</figcaption>
-    <div class="carimbo"><div>4/9</div><div><span>folha</span>Protoboard, furo a furo</div><div><span>quando</span>fases 2 e 4</div><div><span>fonte</span>BANCADA §3.2 · sugestão</div></div>
+    <div class="carimbo"><div>4</div><div><span>folha</span>Protoboard, furo a furo</div><div><span>quando</span>fases 2 e 4</div><div><span>fonte</span>BANCADA §3.2 · sugestão</div></div>
   </figure>
   <div class="cols">
     <div>
@@ -343,14 +405,26 @@ footer { margin-top: 72px; border-top: 2px solid var(--ink); padding-top: 12px; 
       </table></div>
     </div>
     <div>
-      <h3>As peças na protoboard</h3>
-      <ul class="facts">
-        <li><b>D1, D2 e D3 (BAT43):</b> do trilho LINHA à linha j da coluna do TX de cada placa, com a faixa para cima.</li>
-        <li><b>R1 (1 kΩ):</b> do trilho 3V3 à coluna 24. Um fio vai da coluna 24 ao trilho LINHA.</li>
-        <li><b>GPIO27:</b> o 10 kΩ do trilho 3V3 à coluna 28, o 1 kΩ do trilho 3V3 à coluna 30, e o LED com a perna longa (+) na coluna 30 e a curta na 28.</li>
-        <li><b>Fase 4:</b> três resistores de 1 kΩ na linha c, das colunas 2 a 6, 8 a 12 e 14 a 18. Cada um fica entre o fio do ESP32 e o fio da Pi.</li>
-        <li><b>Ponta solta "linha presa":</b> presa no trilho GND de baixo (coluna 23), com a outra ponta marcada.</li>
-      </ul>
+      <h3>As peças, perna por perna</h3>
+      <div class="tblwrap"><table>
+        <thead><tr><th>Peça</th><th>Uma perna</th><th>A outra perna</th></tr></thead>
+        <tbody>
+          <tr><td>D1 (BAT43)</td><td>ânodo → trilho LINHA, coluna 3</td><td>cátodo (faixa) → coluna 3, linha j</td></tr>
+          <tr><td>D2 (BAT43)</td><td>ânodo → trilho LINHA, coluna 10</td><td>cátodo (faixa) → coluna 10, linha j</td></tr>
+          <tr><td>D3 (BAT43)</td><td>ânodo → trilho LINHA, coluna 17</td><td>cátodo (faixa) → coluna 17, linha j</td></tr>
+          <tr><td>R1 (1 kΩ)</td><td>trilho 3V3, coluna 24</td><td>coluna 24, linha a</td></tr>
+          <tr><td>Fio do R1</td><td>coluna 24, linha e</td><td>trilho LINHA, coluna 25</td></tr>
+          <tr><td>10 kΩ</td><td>trilho 3V3, coluna 28</td><td>coluna 28, linha a</td></tr>
+          <tr><td>1 kΩ do LED</td><td>trilho 3V3, coluna 30</td><td>coluna 30, linha a</td></tr>
+          <tr><td>LED</td><td>ânodo (+, perna longa) → coluna 30, linha d</td><td>cátodo (−) → coluna 28, linha d</td></tr>
+          <tr><td>1 kΩ do TX (fase 4)</td><td>coluna 2, linha c</td><td>coluna 6, linha c</td></tr>
+          <tr><td>1 kΩ do RX (fase 4)</td><td>coluna 8, linha c</td><td>coluna 12, linha c</td></tr>
+          <tr><td>1 kΩ do pulso (fase 4)</td><td>coluna 14, linha c</td><td>coluna 18, linha c</td></tr>
+          <tr><td>Fio entre os GND</td><td>trilho GND de cima, coluna 1</td><td>trilho GND de baixo, coluna 1</td></tr>
+          <tr><td>Fio da “linha presa”</td><td>trilho GND de baixo, coluna 23</td><td>solta</td></tr>
+        </tbody>
+      </table></div>
+      <p>Como ler: a coluna 3 tem o fio 3 (GPIO25 do firmware) na linha f e o cátodo do D1 na linha j. As duas pontas estão na mesma metade da coluna, então ficam ligadas. Na coluna 28, o fio 5 (GPIO27), o 10 kΩ e o cátodo do LED ficam juntos da mesma forma.</p>
       <div class="alerta"><b>Use as cores.</b> Se os jumpers seguirem as cores da legenda, a protoboard montada fica igual à folha, e um fio no lugar errado aparece na hora.</div>
     </div>
   </div>
@@ -364,12 +438,13 @@ footer { margin-top: 72px; border-top: 2px solid var(--ink); padding-top: 12px; 
   <figure class="sheet">
     <div class="scroll">{{pi}}</div>
     <figcaption>O mesmo conector nas duas fases: na fase 3, o jumper testa a UART5 sozinha; na fase 4, os mesmos pinos recebem os fios do ESP32.</figcaption>
-    <div class="carimbo"><div>5/9</div><div><span>folha</span>Pinos da Pi</div><div><span>quando</span>fases 3 e 4</div><div><span>fonte</span>BANCADA §6 e §7 · pesquisa #5</div></div>
+    <div class="carimbo"><div>5</div><div><span>folha</span>Pinos da Pi</div><div><span>quando</span>fases 3 e 4</div><div><span>fonte</span>BANCADA §6 e §7 · pesquisa #5</div></div>
   </figure>
   <ul class="facts">
     <li><b>Fase 3:</b> antes de ligar o ESP32, um jumper do pino 32 (TX) ao 33 (RX) prova a UART5 com <code>python3 host/link_test.py --laco --porta /dev/ttyAMA5</code>. Tire o jumper antes de ligar o ESP32.</li>
     <li><b>Fase 4:</b> os pinos 32, 33, 34 e 36 ficam juntos, então os quatro fios de sinal formam um cabo só. O 5 V vai num conector separado, com etiqueta.</li>
     <li><b>A conferir com a equipe:</b> se alguém já reservou um pino da Pi (botão, LED, buzzer), compare com o GPIO16, no pino 36.</li>
+    <li>Os fios da fase 4, um por um, estão na tabela da folha 6.</li>
   </ul>
 </section>
 
@@ -381,7 +456,7 @@ footer { margin-top: 72px; border-top: 2px solid var(--ink); padding-top: 12px; 
   <figure class="sheet">
     <div class="scroll">{{phase4}}</div>
     <figcaption>As setas mostram o sentido do sinal. O fio de 5 V, tracejado, só entra quando o USB está fora.</figcaption>
-    <div class="carimbo"><div>6/9</div><div><span>folha</span>Fios até a Pi</div><div><span>quando</span>fase 4</div><div><span>fonte</span>BANCADA §7 · ADR-0009</div></div>
+    <div class="carimbo"><div>6</div><div><span>folha</span>Fios até a Pi</div><div><span>quando</span>fase 4</div><div><span>fonte</span>BANCADA §7 · ADR-0009</div></div>
   </figure>
   <div class="cols">
     <div>
@@ -403,6 +478,20 @@ footer { margin-top: 72px; border-top: 2px solid var(--ink); padding-top: 12px; 
       <li>O GPIO25 e o GPIO26 continuam na LINHA da bancada, com o adaptador ligado ao notebook pelo <code>can0</code>.</li>
     </ul>
   </div>
+  <h3>Ligações desta folha, fio por fio</h3>
+  <div class="tblwrap"><table class="liga">
+  <thead><tr><th>De</th><th>Para</th><th>Fio</th></tr></thead><tbody>
+  <tr><td>Placa do firmware · <b>GPIO17</b> (TX2)</td><td>1 kΩ do TX · uma perna</td><td><span class="sw" style="--c: var(--wtx)"></span></td></tr>
+  <tr><td>1 kΩ do TX · a outra perna</td><td>Pi · <b>pino 33</b> (GPIO13, RX da UART5)</td><td><span class="sw" style="--c: var(--wtx)"></span></td></tr>
+  <tr><td>Placa do firmware · <b>GPIO16</b> (RX2)</td><td>1 kΩ do RX · uma perna</td><td><span class="sw" style="--c: var(--wrx)"></span></td></tr>
+  <tr><td>1 kΩ do RX · a outra perna</td><td>Pi · <b>pino 32</b> (GPIO12, TX da UART5)</td><td><span class="sw" style="--c: var(--wrx)"></span></td></tr>
+  <tr><td>Placa do firmware · <b>GPIO18</b></td><td>1 kΩ do pulso · uma perna (só no build de teste)</td><td><span class="sw" style="--c: var(--wpulse)"></span></td></tr>
+  <tr><td>1 kΩ do pulso · a outra perna</td><td>Pi · <b>pino 36</b> (GPIO16)</td><td><span class="sw" style="--c: var(--wpulse)"></span></td></tr>
+  <tr><td>Placa do firmware · <b>GND</b></td><td>Pi · <b>pino 34</b></td><td><span class="sw" style="--c: var(--wgnd)"></span></td></tr>
+  <tr><td>Placa do firmware · <b>5V</b> (ou VIN)</td><td>PTC de 0,5 A · uma perna. <b>Só sem o USB</b></td><td><span class="sw" style="--c: var(--w5v)"></span></td></tr>
+  <tr><td>PTC · a outra perna</td><td>Pi · <b>pino 2</b> ou <b>pino 4</b></td><td><span class="sw" style="--c: var(--w5v)"></span></td></tr>
+  <tr><td>Placa do firmware · USB</td><td>Notebook: a IMU_SIM e a gravação</td><td><span class="sw" style="--c: var(--usb)"></span></td></tr>
+  </tbody></table></div>
 </section>
 
 <section class="sec" id="folha-7">
@@ -413,7 +502,7 @@ footer { margin-top: 72px; border-top: 2px solid var(--ink); padding-top: 12px; 
   <figure class="sheet">
     <div class="scroll">{{module}}</div>
     <figcaption>Desenho genérico: a posição das peças muda de módulo para módulo. Confira cada ponto com o multímetro antes de soldar.</figcaption>
-    <div class="carimbo"><div>7/9</div><div><span>folha</span>Preparar o módulo CAN</div><div><span>quando</span>antes da sessão</div><div><span>fonte</span>BANCADA §9.1 · ADR-0010</div></div>
+    <div class="carimbo"><div>7</div><div><span>folha</span>Preparar o módulo CAN</div><div><span>quando</span>antes da sessão</div><div><span>fonte</span>BANCADA §9.1 · ADR-0010</div></div>
   </figure>
   <ul class="callouts">
     <li><span class="mk">A</span><span>O MCP2515 sai da placa.</span></li>
@@ -442,7 +531,7 @@ footer { margin-top: 72px; border-top: 2px solid var(--ink); padding-top: 12px; 
   <figure class="sheet">
     <div class="scroll">{{session}}</div>
     <figcaption>Os dois lados são quase iguais. No adaptador, o TX e o RX trocam de pino, e o pino S vai ao GND pelo JP2 em vez de ir ao GPIO27. Cada barra "3V3" é o 3V3 da própria placa.</figcaption>
-    <div class="carimbo"><div>8/9</div><div><span>folha</span>Sessão com transceptor</div><div><span>quando</span>antes do carro</div><div><span>fonte</span>BANCADA §9.2 · TESTES §10.7</div></div>
+    <div class="carimbo"><div>8</div><div><span>folha</span>Sessão com transceptor</div><div><span>quando</span>antes do carro</div><div><span>fonte</span>BANCADA §9.2 · TESTES §10.7</div></div>
   </figure>
   <div class="cols">
     <div>
@@ -471,6 +560,26 @@ footer { margin-top: 72px; border-top: 2px solid var(--ink); padding-top: 12px; 
       </ul>
     </div>
   </div>
+  <h3>Ligações desta folha, fio por fio</h3>
+  <div class="tblwrap"><table class="liga2">
+    <thead><tr><th>Ponto do módulo</th><th>Lado do firmware · módulo A</th><th>Lado do adaptador · módulo B</th></tr></thead>
+    <tbody>
+      <tr><td><b>TXD</b> · o fio soldado na ilha 1 do MCP2515</td><td>placa do firmware · <b>GPIO25</b></td><td>adaptador · <b>GPIO26</b></td></tr>
+      <tr><td>10 kΩ do TXD · uma perna no TXD</td><td>a outra no <b>3V3</b> da placa do firmware</td><td>a outra no <b>3V3</b> do adaptador</td></tr>
+      <tr><td><b>RXD</b> · o fio soldado na ilha 2 do MCP2515</td><td>10 kΩ em série · uma perna</td><td>10 kΩ em série · uma perna</td></tr>
+      <tr><td>10 kΩ em série · a outra perna</td><td>placa do firmware · <b>GPIO26</b>, e 20 kΩ · uma perna</td><td>adaptador · <b>GPIO25</b>, e 20 kΩ · uma perna</td></tr>
+      <tr><td>20 kΩ · a outra perna</td><td><b>GND</b></td><td><b>GND</b></td></tr>
+      <tr><td><b>S</b> · o fio soldado na perna 8 do TJA1050</td><td>10 kΩ do S · uma perna, e JP1 · um pino</td><td>10 kΩ do S · uma perna, e JP2 · um pino</td></tr>
+      <tr><td>10 kΩ do S · a outra perna</td><td><b>3V3</b> da placa do firmware</td><td><b>3V3</b> do adaptador</td></tr>
+      <tr><td>Jumper · o outro pino</td><td>JP1 → placa do firmware · <b>GPIO27</b></td><td>JP2 → <b>GND</b></td></tr>
+      <tr><td><b>VCC</b> · conector do módulo</td><td>placa do firmware · <b>5V</b> (ou VIN)</td><td>adaptador · <b>5V</b> (ou VIN)</td></tr>
+      <tr><td><b>GND</b> · conector do módulo</td><td>placa do firmware · <b>GND</b></td><td>adaptador · <b>GND</b></td></tr>
+      <tr><td><b>CANH</b> · borne H</td><td colspan="2">CANH do outro módulo, por um fio do par trançado</td></tr>
+      <tr><td><b>CANL</b> · borne L</td><td colspan="2">CANL do outro módulo, pelo outro fio do par</td></tr>
+      <tr><td>J1 (120 Ω)</td><td>posto</td><td>posto</td></tr>
+      <tr><td>CS, SO, SI, SCK e INT</td><td>soltos</td><td>soltos</td></tr>
+    </tbody>
+  </table></div>
   <h3>Os testes da sessão</h3>
   <div class="tblwrap"><table>
     <thead><tr><th>Teste</th><th>Como</th><th>Resultado esperado</th></tr></thead>
@@ -491,13 +600,22 @@ footer { margin-top: 72px; border-top: 2px solid var(--ink); padding-top: 12px; 
   <figure class="sheet">
     <div class="scroll">{{imu}}</div>
     <figcaption>O GPIO34 só serve como entrada, então não faz falta para mais nada. O firmware lê a IMU por tempo e não usa o INT hoje.</figcaption>
-    <div class="carimbo"><div>9/9</div><div><span>folha</span>IMU real</div><div><span>quando</span>quando a IMU chegar</div><div><span>fonte</span>BANCADA §8</div></div>
+    <div class="carimbo"><div>9</div><div><span>folha</span>IMU real</div><div><span>quando</span>quando a IMU chegar</div><div><span>fonte</span>BANCADA §8</div></div>
   </figure>
   <ul class="facts">
     <li>O módulo precisa ter lógica de 3,3 V. A maioria já traz os resistores de <i>pull-up</i> do I²C; confira no módulo comprado.</li>
     <li>Fios de até 20 cm.</li>
     <li>Quando a IMU real entrar, uma constante no <code>main</code> troca a IMU simulada pela real, e o USB deixa de levar a IMU_SIM.</li>
   </ul>
+  <h3>Ligações desta folha, fio por fio</h3>
+  <div class="tblwrap"><table class="liga">
+  <thead><tr><th>De</th><th>Para</th><th>Fio</th></tr></thead><tbody>
+  <tr><td>IMU · <b>VCC</b></td><td>Placa do firmware · <b>3V3</b></td><td><span class="sw" style="--c: var(--w33)"></span></td></tr>
+  <tr><td>IMU · <b>SDA</b></td><td>Placa do firmware · <b>GPIO21</b></td><td><span class="sw" style="--c: var(--wi2c)"></span></td></tr>
+  <tr><td>IMU · <b>SCL</b></td><td>Placa do firmware · <b>GPIO22</b></td><td><span class="sw" style="--c: var(--wi2c)"></span></td></tr>
+  <tr><td>IMU · <b>GND</b></td><td>Placa do firmware · <b>GND</b></td><td><span class="sw" style="--c: var(--wgnd)"></span></td></tr>
+  <tr><td>IMU · <b>INT</b>, se tiver</td><td>Placa do firmware · <b>GPIO34</b>: reservado, não precisa ligar hoje</td><td><span class="sw" style="--c: var(--ink)"></span></td></tr>
+  </tbody></table></div>
 </section>
 
 <section class="ref" id="pinos">

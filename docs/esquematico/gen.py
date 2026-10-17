@@ -127,6 +127,69 @@ def svg(w, h, body, label, minw):
             f'style="min-width:{minw}px;max-width:{w}px">{"".join(body)}</svg>')
 
 
+# ---------- sheet 0: where each pin is on the board ----------
+
+# Pin roles on the firmware board: the color and a short role. The adapter swaps 25 and 26.
+PIN_ROLES = {
+    "25": ("ctx", "CAN TX"), "26": ("crx", "CAN RX"), "27": ("c27", "trava"),
+    "17": ("ctx", "→ Pi 33"), "16": ("crx", "← Pi 32"), "18": ("cpulse", "pulso"),
+    "21": ("ci2c", "SDA"), "22": ("ci2c", "SCL"), "34": ("cmisc", "INT"),
+    "3v3": ("c33", ""), "gnd": ("cgnd", ""), "5v": ("c5v", "5 V"), "usb": ("cusb", "USB"),
+}
+
+# (silkscreen name, role key), from the top (antenna) to the bottom (USB), board seen from above
+BOARD_30 = (
+    [("EN", None), ("VP", None), ("VN", None), ("D34", "34"), ("D35", None), ("D32", None), ("D33", None),
+     ("D25", "25"), ("D26", "26"), ("D27", "27"), ("D14", None), ("D12", None), ("D13", None), ("GND", "gnd"),
+     ("VIN", "5v")],
+    [("D23", None), ("D22", "22"), ("TX0", "usb"), ("RX0", "usb"), ("D21", "21"), ("D19", None), ("D18", "18"),
+     ("D5", None), ("TX2 (17)", "17"), ("RX2 (16)", "16"), ("D4", None), ("D2", None), ("D15", None),
+     ("GND", "gnd"), ("3V3", "3v3")],
+)
+BOARD_38 = (
+    [("3V3", "3v3"), ("EN", None), ("VP", None), ("VN", None), ("34", "34"), ("35", None), ("32", None),
+     ("33", None), ("25", "25"), ("26", "26"), ("27", "27"), ("14", None), ("12", None), ("GND", "gnd"),
+     ("13", None), ("D2", None), ("D3", None), ("CMD", None), ("5V", "5v")],
+    [("GND", "gnd"), ("23", None), ("22", "22"), ("TX", "usb"), ("RX", "usb"), ("21", "21"), ("GND", None),
+     ("19", None), ("18", "18"), ("5", None), ("17", "17"), ("16", "16"), ("4", None), ("0", None), ("2", None),
+     ("15", None), ("D1", None), ("D0", None), ("CLK", None)],
+)
+
+
+def board_pinout(cx, title, sub, pins, pitch, top):
+    left, right = pins
+    x0, x1 = cx - 70, cx + 70
+    bottom = top + (len(left) - 1) * pitch
+    b = [t(cx, 30, title, "tb", "middle"), t(cx, 47, sub, "ts", "middle")]
+    b.append(f'<rect class="block" x="{x0}" y="60" width="140" height="{bottom - 60 + 26}" rx="6"/>')
+    b.append(f'<rect class="ic" x="{cx-44}" y="70" width="88" height="150" rx="3"/>')
+    b.append(t(cx, 149, "WROOM-32", "tic", "middle"))
+    b.append(f'<rect class="ic" x="{cx-18}" y="{bottom + 26}" width="36" height="16" rx="2"/>')
+    b.append(t(cx, bottom + 58, "USB", "ts", "middle"))
+    for side, column in (("l", left), ("r", right)):
+        xp = x0 + 12 if side == "l" else x1 - 12
+        for i, (silk, key) in enumerate(column):
+            y = top + i * pitch
+            if key is None:
+                b.append(f'<circle class="hpin" cx="{xp}" cy="{y}" r="4.5"/>')
+                label, cls = silk, "tm"
+            else:
+                color, role = PIN_ROLES[key]
+                b.append(f'<circle class="hpinhi {color}" cx="{xp}" cy="{y}" r="6.5"/>')
+                label, cls = (f"{silk}  {role}" if role else silk), f"tl f{color[1:]}"
+            if side == "l":
+                b.append(t(x0 - 10, y + 4, label, cls, "end"))
+            else:
+                b.append(t(x1 + 10, y + 4, label, cls))
+    return b
+
+
+def fig_pinout():
+    b = board_pinout(260, "PLACA DE 30 PINOS", "ex.: ESP32 DevKit V1 (DOIT)", BOARD_30, 28, 110)
+    b += board_pinout(740, "PLACA DE 38 PINOS", "ex.: ESP32-DevKitC", BOARD_38, 22, 104)
+    return svg(1000, 600, b, "Os dois modelos comuns de placa ESP32, vistos de cima com o USB para baixo, com os pinos usados pelo firmware destacados: 3V3, GND, 5 V, GPIO16, 17, 18, 21, 22, 25, 26, 27 e 34.", 820)
+
+
 # ---------- sheet 1: the phase-2 desk ----------
 
 def fig_desk():
@@ -193,6 +256,8 @@ def fig_bus():
         b.append(pl([(txx, 270), (txx, LY)], "cline"))
         b.append(dot(txx, LY, "cline"))
         b.append(diode_v(txx, 280))
+        b.append(t(txx - 14, 274, "ânodo", "tm", "end"))
+        b.append(t(txx - 14, 294, "cátodo", "tm", "end"))
         b.append(t(txx + 15, 278, f"{dn} · BAT43", "t"))
         b.append(t(txx + 15, 294, "faixa do lado do TX", "ts"))
         b.append(block(x0, 380, 260, 100))
@@ -233,7 +298,9 @@ def fig_gpio27():
     b.append(pl([(350, 123), (350, 150)], "cmisc"))
     b.append(led_v(350, 160))
     b.append(t(378, 158, "LED de liberação", "t"))
-    b.append(t(378, 174, "ânodo (perna longa) em cima", "ts"))
+    b.append(t(378, 174, "perna longa (+) em cima", "ts"))
+    b.append(t(336, 154, "ânodo +", "tm", "end"))
+    b.append(t(336, 178, "cátodo −", "tm", "end"))
     b.append(pl([(350, 170), (350, 220)], "c27"))
     b.append(dot(265, 220, "c27"))
     b.append(dot(350, 220, "c27"))
@@ -644,7 +711,7 @@ def fig_imu():
 
 
 FIGURES = {
-    "desk": fig_desk, "bus": fig_bus, "gpio27": fig_gpio27, "breadboard": fig_breadboard, "pi": fig_pi,
+    "pinout": fig_pinout, "desk": fig_desk, "bus": fig_bus, "gpio27": fig_gpio27, "breadboard": fig_breadboard, "pi": fig_pi,
     "phase4": fig_phase4, "module": fig_module, "session": fig_session, "imu": fig_imu,
 }
 

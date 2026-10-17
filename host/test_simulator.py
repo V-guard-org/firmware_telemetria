@@ -1,4 +1,4 @@
-"""End to end: the headless simulator runs roteiros against the real native firmware (#20, #21).
+"""End to end: the headless simulator runs roteiros against the real native firmware (#20 to #22).
 
 It needs the firmware built with `pio run -e native`, which ./verifica.sh does first.
 Without it, the tests are skipped, as in test_native_firmware.py. The runs go side by side,
@@ -38,6 +38,24 @@ IMU = """\
 0:10 fim
 """
 
+# The Pi asks for new rates, and the STATUS confirms them (#22).
+RATES = """\
+0:00 taxas imu 50 obd 5
+0:03 confere taxas imu 50 obd 5
+0:04 fim
+"""
+
+# The Pi stops reading for 10 s (#22). At 100/s the firmware sends about 4 KB/s, so the 24 KB
+# that the pty and the native adapter hold fill in about 6 s, and the core's queue drops the rest.
+# At 50/s they would take about 11 s.
+PI_STUCK = """\
+0:00 taxas imu 100 obd 10
+0:01 pi trava
+0:11 pi destrava
+0:14 confere boots 1
+0:15 fim
+"""
+
 
 @unittest.skipUnless(os.path.exists(FIRMWARE), "native firmware not built (pio run -e native)")
 class HeadlessSimulator(unittest.TestCase):
@@ -47,7 +65,8 @@ class HeadlessSimulator(unittest.TestCase):
         cls.dir = tempfile.TemporaryDirectory()
         cls.addClassCleanup(cls.dir.cleanup)
         cls.runs = {name: cls.start(name, roteiro) for name, roteiro in (
-            ("right", RESTART.format(boots=2)), ("wrong", RESTART.format(boots=3)), ("imu", IMU))}
+            ("right", RESTART.format(boots=2)), ("wrong", RESTART.format(boots=3)), ("imu", IMU),
+            ("rates", RATES), ("pi_stuck", PI_STUCK))}
 
     @classmethod
     def start(cls, name, roteiro):
@@ -104,6 +123,26 @@ class HeadlessSimulator(unittest.TestCase):
         self.assertAlmostEqual(9.81, last["az"], delta=0.3)     # the mean, stopped and level
         self.assertAlmostEqual(0.0, last["ax"], delta=0.3)
         self.assertGreater(summary["esp32"]["counters"]["imu_failures"], 9)
+        self.assertEqual(0, summary["esp32"]["counters"]["rejected"])
+
+    def test_the_status_confirms_the_rates_the_pi_asks_for(self):
+        code, summary = self.finish("rates")
+        self.assertEqual(0, code, summary)
+        self.assertEqual({"passed": 1, "failed": []}, summary["checks"])
+        self.assertEqual((50, 5), (summary["esp32"]["imu_rate"], summary["esp32"]["obd_rate"]))
+        self.assertGreater(summary["samples"]["imu"], 150)     # 50 a second for 4 s; 25 would give 100
+        self.assertEqual(0, summary["esp32"]["counters"]["rejected"])
+
+    def test_a_stuck_pi_makes_the_firmware_drop_without_rebooting(self):
+        code, summary = self.finish("pi_stuck")
+        self.assertEqual(0, code, summary)
+        self.assertEqual({"passed": 1, "failed": []}, summary["checks"])
+        self.assertEqual(1, summary["boots"])
+        self.assertEqual((100, 10), (summary["esp32"]["imu_rate"], summary["esp32"]["obd_rate"]))
+        # About 4 s of a full queue at 100 a second
+        self.assertGreater(summary["esp32"]["counters"]["dropped"], 100)
+        # A message dropped in the ESP32 spends no seq, so the cable shows no gap.
+        self.assertEqual(0, summary["decoder"]["counters"]["lost"])
         self.assertEqual(0, summary["esp32"]["counters"]["rejected"])
 
 

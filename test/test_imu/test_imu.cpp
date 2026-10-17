@@ -182,6 +182,40 @@ static void test_an_imu_that_does_not_answer_at_start_is_failed_from_the_first_s
     TEST_ASSERT_EQUAL(0, h.last_status().imu_failures);
 }
 
+// A taxa nova do TAXAS vale a partir da próxima leitura (PROTOCOLO.md §4.2): a amostra em
+// curso fecha assim que tiver as leituras que a taxa nova pede, sem perder as que já tinha.
+static void test_a_new_rate_counts_from_the_next_reading() {
+    FakeCan can;
+    FakeLink link;
+    FakeImu imu;
+    FakeSystem sys;
+    imu.present = true;
+    for (int i = 1; i <= 15; ++i) {
+        imu.script.push_back(accel(0, 0, static_cast<float>(i)));  // a leitura de i × 10 ms
+    }
+    Harness h(can, link, imu, sys);
+
+    h.start(0);
+    h.taxas(100, 5, 25'000);   // a 25/s, com as leituras de 10 e 20 ms no intervalo
+    h.run_until(50'000);
+    auto samples = imu_samples(link);
+    TEST_ASSERT_EQUAL(3, samples.size());
+    TEST_ASSERT_EQUAL_UINT64(20'000, samples[0].t_us);  // 10, 20 e 30 ms
+    TEST_ASSERT_EQUAL(200, samples[0].mean[kAz]);
+    TEST_ASSERT_EQUAL(300, samples[0].peak[kAz]);
+    TEST_ASSERT_EQUAL_UINT64(40'000, samples[1].t_us);  // uma leitura por amostra
+    TEST_ASSERT_EQUAL(400, samples[1].mean[kAz]);
+    TEST_ASSERT_EQUAL_UINT64(50'000, samples[2].t_us);
+
+    h.taxas(10, 5, 55'000);
+    h.run_until(155'000);
+    samples = imu_samples(link);
+    TEST_ASSERT_EQUAL(4, samples.size());
+    TEST_ASSERT_EQUAL_UINT64(105'000, samples[3].t_us);  // as 10 leituras de 60 a 150 ms
+    TEST_ASSERT_EQUAL(1050, samples[3].mean[kAz]);
+    TEST_ASSERT_EQUAL(1500, samples[3].peak[kAz]);
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_a_sample_has_the_mean_and_the_peak_of_its_4_readings);
@@ -191,5 +225,6 @@ int main() {
     RUN_TEST(test_no_sample_when_every_reading_of_the_interval_fails);
     RUN_TEST(test_10_failures_in_a_row_lead_to_failed_and_a_restart_each_second);
     RUN_TEST(test_an_imu_that_does_not_answer_at_start_is_failed_from_the_first_status);
+    RUN_TEST(test_a_new_rate_counts_from_the_next_reading);
     return UNITY_END();
 }

@@ -68,12 +68,12 @@ Os testes montam o núcleo com as quatro portas falsas e um relógio falso que s
 
 | Módulo | O que os testes cobrem |
 |---|---|
-| `lib/protocol/` | CRC (`"123456789"` dá `0x29B1`); COBS; os exemplos byte a byte do [`PROTOCOLO.md` §8](PROTOCOLO.md); a ordem e os descartes da fila de saída (§6.5); `seq` que não é gasto por mensagem descartada |
+| `lib/protocol/` | CRC (`"123456789"` dá `0x29B1`); COBS; os exemplos byte a byte do [`PROTOCOLO.md` §8](PROTOCOLO.md); a ordem e os descartes da fila de saída (§6.5); `seq` que não é gasto por mensagem descartada. A fila se testa pelo núcleo, em `test/test_output/`, com amostras, STATUS, PONG e LOG de verdade (#22) |
 | `lib/obd/` | Cada linha da tabela de cenários do [`MAQUINAS-DE-ESTADO.md` §4](MAQUINAS-DE-ESTADO.md); a agenda; `arb_lost` que não conta como falta; resposta atrasada que ainda vale; resposta em vários quadros ignorada; a escolha da central de menor endereço; a noite de 10 h do §2.5, com cerca de 3 600 perguntas; o portão (§5) |
 | `lib/obd/`, emenda do §2.4 | Com a ignição desligada, nenhum PID sai da agenda antes do SEM_RESPOSTA; um PID mudo, com os outros respondendo, sai depois de 5 faltas |
 | `lib/imu/` | Os exemplos de média e pico do [`PROTOCOLO.md` §3.2](PROTOCOLO.md); o `t_us` no meio do intervalo; leituras com falha; 10 falhas seguidas levando a FALHA; o reinício a cada 1 s. Em `test/test_imu/`, pelo núcleo, com a IMU falsa (#21) |
 | `lib/imu_sim/` | Os valores da IMU_SIM nas amostras; a marca de falha; mais de 1 s sem mensagem; a espera de 1 s na partida; o corpo de tamanho errado em `rejeitadas`. Em `test/test_imu_sim/`, pelo núcleo, com a IMU simulada montada como no `main` e a IMU_SIM chegando pela UART falsa (#21) |
-| `lib/core/` | STATUS a cada 1 s; presença da Pi; TAXAS com cada valor aceito e recusado (`rejeitadas`); a `0x83` entregue a quem se registrou e recusada sem registro; `on_dev_bytes()` que só entrega mensagens de desenvolvimento; o limite de 10 LOGs/s; o próximo prazo |
+| `lib/core/` | STATUS a cada 1 s; presença da Pi; TAXAS com cada valor aceito e recusado (`rejeitadas`); a `0x83` entregue a quem se registrou e recusada sem registro; `on_dev_bytes()` que só entrega mensagens de desenvolvimento; o limite de 10 LOGs/s; o próximo prazo. O limite de LOGs fica em `test/test_output/`, e a taxa nova da IMU, que vale a partir da próxima leitura, em `test/test_imu/` (#22) |
 
 O esboço de um teste de cenário está no [`PLATAFORMA.md` §4.3](PLATAFORMA.md).
 
@@ -87,7 +87,7 @@ Os testes Python usam o `unittest` da biblioteca padrão, para rodar na Pi sem i
 | `host/test_ecu_sim.py` | A ida e volta de cada PID: a fórmula inversa da ECU simulada e a fórmula do decodificador devolvem o valor de partida, dentro da resolução do PID. Também o PID ausente e o mudo, as duas centrais e o `fora_da_lista`. Roda sem o `vcan0`, porque a ECU simulada não abre o socket ([`SIMULADOR.md` §2](SIMULADOR.md)) |
 | `host/test_fake_esp32.py` | 60 s de ESP32 falso no relógio falso, ligados ao `Decoder` sem pty: chegam amostras de IMU e de OBD, sem `lost` nem `corrupt` ([`DECODIFICADOR.md` §4](DECODIFICADOR.md)) |
 | `host/test_roteiros.py` | Os roteiros prontos são lidos sem erro (eles chegam no #28); uma linha desconhecida, um tempo que volta, uma linha depois do `fim` ou um valor fora da faixa dá erro com o número da linha |
-| `host/test_simulator.py` | O simulador sem tela, com o firmware nativo de verdade como processo filho: um roteiro curto com `reinicia esp32` e `confere boots 2` termina com código 0, e o mesmo roteiro com um `confere` errado termina com 1 (#20). Um roteiro com `buraco`, `imu falha liga`, `confere imu falha`, `confere vazias imu 1`, `imu falha desliga` e `confere imu ok` termina com 0, e a IMU parada chega com `az` ≈ 9,81 (#21). É a parte da costura 7 que não precisa do `vcan0`. As corridas vão lado a lado, em cerca de 10 s, então entram no `./verifica.sh`. Sem o firmware compilado, o teste é pulado |
+| `host/test_simulator.py` | O simulador sem tela, com o firmware nativo de verdade como processo filho: um roteiro curto com `reinicia esp32` e `confere boots 2` termina com código 0, e o mesmo roteiro com um `confere` errado termina com 1 (#20). Um roteiro com `buraco`, `imu falha liga`, `confere imu falha`, `confere vazias imu 1`, `imu falha desliga` e `confere imu ok` termina com 0, e a IMU parada chega com `az` ≈ 9,81 (#21). Um roteiro com `taxas imu 50 obd 5` tem o 50 confirmado pelo STATUS (`confere taxas`); outro, a 100/s, com `pi trava` por 10 s, termina com `descartadas` acima de 100, `lost` 0 e `confere boots 1` (#22). É a parte da costura 7 que não precisa do `vcan0`. As corridas vão lado a lado, em cerca de 15 s, então entram no `./verifica.sh`. Sem o firmware compilado, o teste é pulado |
 | `host/test_native_firmware.py` | O firmware nativo de verdade, no pty, com o `Decoder`: o STATUS chega com a plataforma notebook e o OBD em ESPERANDO_PI, os PONGs dão a sincronização, e o atalho some quando o firmware termina. Sem o firmware compilado, o teste é pulado, como na Pi |
 
 ### 3.3 Um comando
@@ -112,6 +112,7 @@ O roteiro ganha o comando `confere`. Ele compara o que o simulador sabe naquele 
 | `confere vazias obd <n>`, `confere vazias imu <n>` | Quantas amostras vazias daquela fonte chegaram desde o início |
 | `confere central <nome> <id>` | Para qual ID foi a última requisição daquele PID, vista pela ECU simulada (útil com `--duas-centrais`) |
 | `confere boots <n>` | Quantos boots o decodificador viu |
+| `confere taxas imu <n> obd <m>` | As taxas em uso do último STATUS, as duas juntas (emenda do #22) |
 
 - O STATUS sai 1 vez por segundo, então um `confere` de estado precisa de folga: escreva-o pelo menos 2 s depois da mudança esperada.
 - Um `confere` que falha vai para o registro, com o número da linha, o valor esperado e o visto. O roteiro continua.

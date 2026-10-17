@@ -58,19 +58,23 @@ public:
     static constexpr size_t kMaxDevHandlers = 4;
 
 private:
+    bool push_byte(MessageReader& reader, uint8_t byte);
     void on_link_message(const Message& msg, uint64_t t_us);
+    void apply_taxas(const Message& msg);
     bool deliver_dev_message(const Message& msg, uint64_t t_us);
     void send_status(uint64_t t_us);
     void send(MessageType type, const uint8_t* body, size_t len);
     void flush(uint64_t now_us);
     void send_log(LogLevel level, const char* text, uint64_t t_us);
+    bool log_allowed(uint64_t t_us);
     void on_frame_blocked(const CanFrame& frame, bool released) override;
 
     ClosedListGate gate_;  // o OBD (#25) recebe o portão, nunca a porta CAN
     LinkPort& link_;
     ImuPort& imu_;
     SystemPort& system_;
-    ImuMachine imu_machine_;
+    ImuMachine imu_machine_;      // tem a taxa de envio da IMU em uso
+    uint8_t obd_rate_;            // a do OBD, que a máquina do OBD (#25) segue
 
     uint16_t boot_;
     ResetReason reset_reason_;
@@ -78,12 +82,18 @@ private:
     char firmware_[kMaxFirmwareText + 1];
 
     MessageReader link_reader_;
+    MessageReader dev_reader_;  // a UART0 da fase 4, à parte da Pi (on_dev_bytes)
     OutputQueue queue_;
     uint16_t tx_seq_ = 0;
     uint32_t counters_[kCounterCount] = {};
     uint64_t next_status_us_ = 0;
     uint64_t retry_write_us_ = UINT64_MAX;  // só enquanto a UART recusa a fila
     uint64_t now_us_ = 0;                   // o instante da chamada em curso
+
+    // Os instantes dos últimos 10 LOGs que saíram; next_log_ aponta o mais antigo deles.
+    static constexpr size_t kMaxLogsPerSecond = 10;
+    uint64_t log_times_us_[kMaxLogsPerSecond];
+    size_t next_log_ = 0;
 
     struct DevRegistration {
         uint8_t type;

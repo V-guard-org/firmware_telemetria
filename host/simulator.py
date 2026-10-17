@@ -66,6 +66,18 @@ def _one_of(name, value, accepted):
     return value
 
 
+# The rates a TAXAS may ask for (PROTOCOLO.md §4.2), checked when the roteiro is read
+IMU_RATES = (100, 50, 25, 20, 10)
+OBD_RATES = (1, 2, 5, 10)
+
+
+def _rates(imu, obd):
+    for name, text, accepted in (("imu", imu, IMU_RATES), ("obd", obd, OBD_RATES)):
+        if int(text) not in accepted:
+            raise ValueError(f'taxa {name} {text}: esperava {", ".join(map(str, accepted))}')
+    return int(imu), int(obd)
+
+
 # The manobras of SIMULADOR.md §3.4: the roteiro's words and the car model's names
 MANEUVER_COMMANDS = {"buraco": "pothole", "lombada": "speed_bump", "frenagem brusca": "hard_brake",
                      "curva esquerda": "left_turn", "curva direita": "right_turn",
@@ -85,12 +97,15 @@ _COMMANDS = (
     (r"imu sem-sinal (liga|desliga)", lambda on: Command("imu_silent", (on == "liga",))),
     (r"ruído (liga|desliga)", lambda on: Command("noise", (on == "liga",))),
     (r"pi ping (liga|desliga)", lambda on: Command("ping", (on == "liga",))),
+    (r"pi (trava|destrava)", lambda locked: Command("pi_stuck", (locked == "trava",))),
+    (r"taxas imu (\d+) obd (\d+)", lambda imu, obd: Command("rates", _rates(imu, obd))),
     (r"reinicia esp32", lambda: Command("restart", ())),
     (r"confere obd (\S+)", lambda state: Command(
         "check_obd", (_one_of("confere obd", state, OBD_STATES),))),
     (r"confere imu (\S+)", lambda state: Command(
         "check_imu", (_one_of("confere imu", state, IMU_STATES),))),
     (r"confere boots (\d+)", lambda count: Command("check_boots", (int(count),))),
+    (r"confere taxas imu (\d+) obd (\d+)", lambda imu, obd: Command("check_rates", _rates(imu, obd))),
     (r"confere vazias (\S+) (\d+)", lambda source, count: Command(
         "check_empty", (_one_of("confere vazias", source, SOURCES), int(count)))),
     (r"fim", lambda: Command("end", ())),
@@ -172,6 +187,7 @@ class Simulator:
         self._end_tick = round(min(ends) * TICKS_PER_S) if ends else None
         self._tick_count = 0
         self._pinging = True
+        self._pi_stuck = False          # "Pi travada" (§4): the decoder neither reads nor writes
         self._imu_seq = 0
         self._imu_failing = False       # the IMU_SIM goes with its failure mark
         self._imu_silent = False        # "Parar a 0x83" (§4)
@@ -245,6 +261,10 @@ class Simulator:
             self.car.noise = args[0]
         elif name == "ping":
             self._pinging = args[0]
+        elif name == "pi_stuck":
+            self._pi_stuck = args[0]
+        elif name == "rates":
+            self.decoder.set_rates(imu=args[0], obd=args[1])
         elif name == "restart":
             self._restart_firmware()
         elif name == "end":
@@ -270,7 +290,9 @@ class Simulator:
         start = time.monotonic()
         while not self._ended and not self._stopping:
             due = start + self._tick_count * TICK_S
-            ready, _, _ = select.select([self._fd], [], [], max(0.0, due - time.monotonic()))
+            # A stuck Pi leaves the bytes in the port, which fills, as the Pi's UART would.
+            reading = [] if self._pi_stuck else [self._fd]
+            ready, _, _ = select.select(reading, [], [], max(0.0, due - time.monotonic()))
             if ready:
                 # Fed as soon as read: the PONG's arrival is the read, not the next tick.
                 self._exchange(self._read())
@@ -300,7 +322,8 @@ class Simulator:
             body = _IMU_SIM.pack(*reading, int(self._imu_failing))
             self._write(encode_message(IMU_SIM, 0, self._imu_seq, body))
             self._imu_seq = (self._imu_seq + 1) & 0xFFFF
-        self._exchange(b"")
+        if not self._pi_stuck:          # the IMU_SIM is the car's, so it goes on
+            self._exchange(b"")
 
     def _exchange(self, data):
         """The Pi's part: the bytes read go to feed(), and what data_to_send() returns goes out."""
@@ -320,11 +343,12 @@ class Simulator:
         esp32 = stats["esp32"]
         if esp32 is None:
             return
-        status = (stats["boot"], esp32["obd_state"], esp32["imu_state"])
+        status = (stats["boot"], esp32["obd_state"], esp32["imu_state"], esp32["imu_rate"],
+                  esp32["obd_rate"])
         if status != self._last_status:
             self._last_status = status
             self._record(f"STATUS: boot 0x{status[0]:04X}, obd {_roteiro_name(status[1])}, "
-                         f"imu {_roteiro_name(status[2])}")
+                         f"imu {_roteiro_name(status[2])}, taxas imu {status[3]} obd {status[4]}")
 
     def _seen(self, name, args):
         """A confere's expected and seen values, from what the simulator knows now (TESTES.md §4)."""
@@ -335,6 +359,9 @@ class Simulator:
             source, count = args
             return str(count), str(self.empty[source])
         esp32 = stats["esp32"]
+        if name == "check_rates":
+            seen = "nenhum STATUS" if esp32 is None else f"imu {esp32['imu_rate']} obd {esp32['obd_rate']}"
+            return "imu {} obd {}".format(*args), seen
         if esp32 is None:
             return args[0], "nenhum STATUS"
         return args[0], _roteiro_name(esp32["obd_state" if name == "check_obd" else "imu_state"])

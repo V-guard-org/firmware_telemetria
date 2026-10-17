@@ -48,11 +48,35 @@ public:
         core_.on_link_bytes(data, len, t_us);
     }
 
+    // Um pedaço de bytes da 2ª entrada, a UART0 da fase 4 (PLATAFORMA.md §5), no instante t_us.
+    void dev_bytes(const uint8_t* data, size_t len, uint64_t t_us) {
+        run_until(t_us);
+        core_.on_dev_bytes(data, len, t_us);
+    }
+
+    // Uma mensagem da Pi inteira, num pedaço só, no instante t_us.
+    void from_pi(MessageType type, const uint8_t* body, size_t len, uint64_t t_us) {
+        uint8_t wire[kMaxWire];
+        link_bytes(wire, encode_message(type, 0, 0, body, len, wire), t_us);
+    }
+
     // Um PING inteiro, num pedaço só, no instante t_us.
     void ping(uint16_t seq, uint64_t t_us) {
         uint8_t wire[kMaxWire];
         const size_t len = encode_message(MessageType::kPing, 0, seq, nullptr, 0, wire);
         link_bytes(wire, len, t_us);
+    }
+
+    // Um TAXAS (PROTOCOLO.md §4.2): a taxa da IMU e a do OBD, em amostras/s.
+    void taxas(uint8_t imu, uint8_t obd, uint64_t t_us) {
+        const uint8_t body[] = {imu, obd};
+        from_pi(MessageType::kTaxas, body, sizeof(body), t_us);
+    }
+
+    // Um aviso ou um erro da plataforma, no instante t_us.
+    void platform_log(LogLevel level, const char* text, uint64_t t_us) {
+        run_until(t_us);
+        core_.on_platform_log(level, text, t_us);
     }
 
     StatusView last_status() const {

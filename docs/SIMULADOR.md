@@ -182,6 +182,7 @@ Um roteiro é um arquivo de texto em `host/roteiros/`, com uma ação por linha:
 - `#` começa um comentário, no início ou no fim da linha. `fim` marca o fim; sem ele, o roteiro termina 5 s depois da última ação.
 - Um roteiro com uma linha que o programa não entende não roda; a mensagem diz o número da linha.
 - *Emenda do #20.* Também não roda, com o número da linha: um tempo menor que o da linha anterior, uma linha depois do `fim` e um valor fora da faixa. O acelerador e o freio vão de 0% a 100%, e o volante, de −100% a +100%, sempre com o `%`. Um roteiro sem nenhuma ação não roda.
+- *Emenda do #22.* As taxas de `taxas` e de `confere taxas` precisam estar nas listas do [`PROTOCOLO.md` §4.2](PROTOCOLO.md), sempre com a IMU e o OBD, nessa ordem. Assim, um roteiro nunca pede ao `set_rates()` uma taxa que ele recusaria.
 
 | Comando | Exemplo |
 |---|---|
@@ -193,7 +194,7 @@ Um roteiro é um arquivo de texto em `host/roteiros/`, com uma ação por linha:
 | Centrais | `atraso 30 ms`, `perda 10%` |
 | IMU simulada | `imu falha liga`, `imu falha desliga`, `imu sem-sinal liga`, `imu sem-sinal desliga`, `ruído liga`, `ruído desliga` |
 | Pi | `pi ping liga`, `pi ping desliga`, `pi trava`, `pi destrava`, `taxas imu 50 obd 5`, `reinicia esp32` |
-| Conferência | `confere obd lendo`, `confere imu falha`, `confere pid voltage ausente`, `confere vazias obd 1`, `confere central speed 7E9`, `confere boots 1` |
+| Conferência | `confere obd lendo`, `confere imu falha`, `confere pid voltage ausente`, `confere vazias obd 1`, `confere central speed 7E9`, `confere boots 1`, `confere taxas imu 50 obd 5` |
 | Fim | `fim` |
 
 **Roteiros iniciais** (os textos estão no protótipo):
@@ -233,6 +234,11 @@ O programa termina com código de saída 1 se algum `confere` ou algum critério
 - **O firmware filho** roda numa sessão própria: um Ctrl+C para o simulador, e o simulador para o firmware. O Ctrl+C e o SIGTERM só marcam o fim, que vem no tique seguinte; um 2º sinal não interrompe a parada do firmware. Para reiniciar, o simulador fecha a porta, manda SIGTERM ao firmware (SIGKILL depois de 2 s), apaga um atalho que tenha sobrado, inicia o firmware de novo, espera o atalho novo e reabre a porta. A porta é aberta com `TCSANOW`, e não com o `TCSAFLUSH` do `tty.setraw()`, para não perder o STATUS do boot.
 - **Até a tela (#27),** o `--sem-tela` é obrigatório. Um roteiro com `reinicia esp32` pede `--firmware`, até existir o pulso no RTS da fase 2.
 - *Emenda do #21.* O resumo traz também a última amostra de cada fonte que tinha valores (`last_samples`), como o `update()` a recebe. É o que mostra, sem a tela, que a IMU parada chega com `az` ≈ 9,81.
+
+*Emenda do #22 (16/10/2026):*
+- **Pi travada.** Com `pi trava`, o simulador para de ler a porta e não chama o decodificador: nem o `feed()` nem o `data_to_send()`, então não saem PING nem TAXAS. A IMU_SIM continua, porque é do carro. Na fase 1, o pty enche, e a fila do firmware descarta ([`PLATAFORMA.md` §3.3](PLATAFORMA.md)).
+- **Pi destravada.** Com `pi destrava`, o decodificador lê de uma vez o que ficou no pty. Como ele não ouviu o ESP32 por mais de 3 s, cada fonte que tinha valores dá uma amostra vazia `{}` ([`DECODIFICADOR.md` §3.4](DECODIFICADOR.md)), e depois as amostras voltam. As mensagens descartadas no ESP32 não gastaram `seq`, então o `lost` não sobe: elas só aparecem em `descartadas`.
+- **Taxas no registro.** A linha do STATUS mostra também as taxas em uso. Ela sai quando alguma muda, e é assim que o registro mostra a taxa confirmada.
 
 Com `--gravar sessao.jsonl`, com ou sem tela, o programa grava uma linha por ação, por amostra entregue e por STATUS, e o estado do modelo 10 vezes por segundo.
 

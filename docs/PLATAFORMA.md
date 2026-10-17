@@ -275,7 +275,7 @@ TEST_ASSERT_EQUAL(8, h.last_status().obd_state);        // BLOQUEADO
   - *Emenda do #22.* O `on_dev_bytes()` tem o seu próprio leitor de mensagens, separado do da Pi, para que os pedaços das duas entradas não se misturem. Por ali também somam 1 em `rejeitadas` o TAXAS, as mensagens que a moldura rejeita e as de desenvolvimento sem registro.
   - Com a IMU real, a UART0 não é lida.
 - **Como escolher.** No ESP32, uma constante no `main` escolhe entre a IMU real e a simulada; trocar exige recompilar, como a constante da UART na ADR-0005. Cada binário tem uma IMU só, então não é uma chave em tempo de execução (ADR-0003). O notebook não tem IMU real e sempre usa a simulada.
-- **Como apagar.** Basta remover a pasta `lib/imu_sim/`, a constante, as linhas que a montam nos `main` e a leitura da UART0 da fase 4. No núcleo, sai só o `on_dev_bytes()`.
+- **Como apagar.** Basta remover a pasta `lib/imu_sim/`, a constante, as linhas que a montam nos `main` e a leitura da UART0 da fase 4. No núcleo, sai só o `on_dev_bytes()`, com o seu leitor de mensagens (emenda do #22).
 
 O OBD não tem simulação dentro do firmware: a ECU simulada é um programa no notebook, e o firmware sempre usa o CAN de verdade, seja o `vcan` ou o TWAI.
 

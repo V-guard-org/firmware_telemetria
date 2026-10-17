@@ -208,7 +208,7 @@ void Core::send_status(uint64_t t_us) {
 // Todo LOG passa por aqui, os da plataforma e os do próprio núcleo. Acima do limite, ele é
 // descartado e soma em descartadas (PROTOCOLO.md §3.5).
 void Core::send_log(LogLevel level, const char* text, uint64_t t_us) {
-    if (!log_allowed(t_us)) {
+    if (!take_log_slot(t_us)) {
         ++counters_[kDropped];
         return;
     }
@@ -216,8 +216,9 @@ void Core::send_log(LogLevel level, const char* text, uint64_t t_us) {
     send(MessageType::kLog, body, build_log_body(t_us, level, text, body));
 }
 
-// Um LOG sai se o 10º antes dele saiu há pelo menos 1 s.
-bool Core::log_allowed(uint64_t t_us) {
+// Um LOG passa pelo limite se o 10º antes dele passou há pelo menos 1 s, e então ocupa a vez.
+// Conta o que passou, mesmo que a fila cheia o descarte depois.
+bool Core::take_log_slot(uint64_t t_us) {
     uint64_t& tenth_before = log_times_us_[next_log_];
     if (tenth_before != kNever && t_us - tenth_before < kLogWindowUs) {
         return false;

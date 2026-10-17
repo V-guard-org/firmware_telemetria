@@ -97,7 +97,7 @@ _COMMANDS = (
     (r"imu sem-sinal (liga|desliga)", lambda on: Command("imu_silent", (on == "liga",))),
     (r"ruído (liga|desliga)", lambda on: Command("noise", (on == "liga",))),
     (r"pi ping (liga|desliga)", lambda on: Command("ping", (on == "liga",))),
-    (r"pi (trava|destrava)", lambda locked: Command("pi_stuck", (locked == "trava",))),
+    (r"pi (trava|destrava)", lambda action: Command("pi_stuck", (action == "trava",))),
     (r"taxas imu (\d+) obd (\d+)", lambda imu, obd: Command("rates", _rates(imu, obd))),
     (r"reinicia esp32", lambda: Command("restart", ())),
     (r"confere obd (\S+)", lambda state: Command(

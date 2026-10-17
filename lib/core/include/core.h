@@ -66,7 +66,7 @@ private:
     void send(MessageType type, const uint8_t* body, size_t len);
     void flush(uint64_t now_us);
     void send_log(LogLevel level, const char* text, uint64_t t_us);
-    bool log_allowed(uint64_t t_us);
+    bool take_log_slot(uint64_t t_us);
     void on_frame_blocked(const CanFrame& frame, bool released) override;
 
     ClosedListGate gate_;  // o OBD (#25) recebe o portão, nunca a porta CAN

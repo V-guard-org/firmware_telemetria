@@ -206,7 +206,7 @@ O PONG passa na frente de tudo na fila de saída (§6.5).
 - O limite é de 10 por segundo; o excesso é descartado e entra em `descartadas`.
 - No notebook (fase 1), os logs também saem no terminal.
 
-*Emenda do #22 (16/10/2026).* O limite vale para qualquer intervalo de 1 s, e não para cada segundo do relógio: um LOG só sai se o 10º antes dele saiu há pelo menos 1 s. Assim, uma rajada que atravessa a virada de um segundo não passa de 10. O limite é conferido quando o LOG é gerado, antes da fila de saída, e vale para todos: os da plataforma e os do próprio núcleo, como o do quadro barrado pela lista fechada.
+*Emenda do #22 (16/10/2026).* O limite vale para qualquer intervalo de 1 s, e não para cada segundo do relógio: um LOG só passa pelo limite se o 10º LOG antes dele passou há pelo menos 1 s. Assim, uma rajada que atravessa a virada de um segundo não passa de 10. O limite é conferido quando o LOG é gerado, antes da fila de saída: um LOG que passou e depois foi descartado pela fila cheia também conta. Ele vale para todos: os da plataforma e os do próprio núcleo, como o do quadro barrado pela lista fechada.
 
 ## 4. Mensagens da Pi para o ESP32
 

@@ -127,6 +127,37 @@ static void test_then_the_oldest_sample_and_a_new_log_is_dropped_too() {
     TEST_ASSERT_EQUAL(2, h.last_status().dropped);
 }
 
+// Emenda do #19 ao §6.5: sem LOG nem amostra, sai o STATUS mais antigo, e só depois o PONG
+// mais antigo.
+static void test_with_only_status_and_pongs_the_status_goes_first_then_the_oldest_pong() {
+    FakeCan can;
+    FakeLink link;
+    FakeImu imu;  // sem IMU: nenhuma amostra
+    FakeSystem sys;
+    Harness h(can, link, imu, sys);
+
+    link.set_stuck(true);
+    h.start(0);                                             // STATUS
+    for (uint16_t seq = 1; seq <= 17; ++seq) {              // 17 PONGs: com o STATUS são 18
+        h.ping(seq, 100'000 + seq * 1'000);
+    }
+
+    link.set_stuck(false);
+    h.run_until(130'000);
+
+    const auto sent = link.messages();
+    TEST_ASSERT_EQUAL(16, sent.size());
+    for (size_t i = 0; i < sent.size(); ++i) {
+        TEST_ASSERT_EQUAL(MessageType::kPong, sent[i].type);
+        const auto& body = sent[i].body;
+        TEST_ASSERT_EQUAL(i + 2, body[0] | (body[1] << 8));  // saiu o PONG do PING 1
+    }
+    assert_seq_from_zero(sent);
+
+    h.run_until(1'000'000);
+    TEST_ASSERT_EQUAL(2, h.last_status().dropped);
+}
+
 static std::vector<std::string> log_texts(const FakeLink& link) {
     std::vector<std::string> out;
     for (const auto& msg : link.messages_of(MessageType::kLog)) {
@@ -172,6 +203,7 @@ int main() {
     RUN_TEST(test_pong_then_status_then_the_samples_in_order_and_the_log_last);
     RUN_TEST(test_a_full_queue_drops_the_oldest_log_first);
     RUN_TEST(test_then_the_oldest_sample_and_a_new_log_is_dropped_too);
+    RUN_TEST(test_with_only_status_and_pongs_the_status_goes_first_then_the_oldest_pong);
     RUN_TEST(test_at_most_10_logs_in_any_second_and_the_rest_count_as_dropped);
     return UNITY_END();
 }

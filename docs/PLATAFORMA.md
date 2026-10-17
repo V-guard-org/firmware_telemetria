@@ -163,6 +163,8 @@ O teste automático da lista fechada roda no portão. A plataforma não confere 
 - **No boot, o transceptor está silencioso:** até o 1º `talk()`, todo quadro é barrado.
 - **O caminho do LOG.** O núcleo ganhou o corpo do LOG ([`PROTOCOLO.md` §3.5](PROTOCOLO.md)) e já manda como LOG os avisos e os erros da plataforma (`on_platform_log`). O limite de 10 por segundo e os avisos do próprio núcleo continuam no #22.
 
+*Emenda do #22 (16/10/2026).* O limite de 10 por segundo chegou. Os LOGs da plataforma e os do núcleo passam pelo mesmo caminho e pelo mesmo limite. Por enquanto, o único LOG do próprio núcleo é o erro do quadro barrado.
+
 ### 3.3 Porta da UART
 
 | Operação | O que faz |
@@ -230,7 +232,7 @@ Com uma fila só, os eventos chegam ao núcleo na ordem em que aconteceram, e os
 - **Partida.** `program --can vcan0`. O firmware cria o pty e um atalho de caminho fixo, `/tmp/vguard-esp32`, que o decodificador e o simulador abrem. A opção `--path` troca o caminho do atalho, como no ESP32 falso; o teste de ponta a ponta a usa para não disputar o atalho com um simulador aberto. Até a porta CAN do notebook chegar (#25), o `--can` é aceito e ignorado, com um aviso no terminal. Na fase 2, os mesmos programas abrem a `/dev/vguard-esp32` no lugar dele ([`BANCADA.md` §5](BANCADA.md)). O simulador do PC pode iniciar o firmware como processo filho, para reiniciá-lo por um botão ([`SIMULADOR.md` §4](SIMULADOR.md)).
 - **`BootInfo`.** O `boot` é sorteado, o motivo de reinício é 1 (energia) e a `plataforma` é 0.
 - **Logs.** Saem também no terminal.
-- **Sem leitor.** O firmware fica com o seu lado do pty aberto, para que o `poll()` não acorde sem parar quando ninguém lê. O pty guarda cerca de 17 KB, o adaptador guarda mais 4 KB, e depois disso a fila do núcleo descarta (§3.3).
+- **Sem leitor.** O firmware fica com o seu lado do pty aberto, para que o `poll()` não acorde sem parar quando ninguém lê. O pty guarda cerca de 17 KB, o adaptador guarda mais 4 KB, e depois disso a fila do núcleo descarta (§3.3). *Medido no #22, no kernel 7.0:* o pty guardou cerca de 20 KB, ou 24 KB com o adaptador. Sem leitor, isso enche em cerca de 6 s a 100 amostras/s e em 11 s a 50/s.
 - **Sem watchdog.**
 - **Versão do firmware.** É a de `[firmware] version` no `platformio.ini`, seguida do commit e de `-dirty` se há mudanças sem commit, por exemplo `0.1.0-a58af37`. O script `firmware_version.py` a monta a cada build.
 
@@ -270,9 +272,10 @@ TEST_ASSERT_EQUAL(8, h.last_status().obd_state);        // BLOQUEADO
 - **Fase 4 (ADR-0009).** Os fios da Pi ficam na UART2 (GPIO17 e GPIO16, [`BANCADA.md` §7](BANCADA.md)), e o simulador do PC manda a `0x83` pelo USB, que é a UART0.
   - Com a IMU simulada e a ligação com a Pi fora da UART0, uma tarefa a mais lê a UART0 e entrega os bytes ao núcleo por `on_dev_bytes()`.
   - O `on_dev_bytes()` remonta as mensagens como o `on_link_bytes()`, mas só entrega as de desenvolvimento aos registrados. As demais, como um PING, somam 1 em `rejeitadas`.
+  - *Emenda do #22.* O `on_dev_bytes()` tem o seu próprio leitor de mensagens, separado do da Pi, para que os pedaços das duas entradas não se misturem. Por ali também somam 1 em `rejeitadas` o TAXAS, as mensagens que a moldura rejeita e as de desenvolvimento sem registro.
   - Com a IMU real, a UART0 não é lida.
 - **Como escolher.** No ESP32, uma constante no `main` escolhe entre a IMU real e a simulada; trocar exige recompilar, como a constante da UART na ADR-0005. Cada binário tem uma IMU só, então não é uma chave em tempo de execução (ADR-0003). O notebook não tem IMU real e sempre usa a simulada.
-- **Como apagar.** Basta remover a pasta `lib/imu_sim/`, a constante, as linhas que a montam nos `main` e a leitura da UART0 da fase 4. No núcleo, sai só o `on_dev_bytes()`.
+- **Como apagar.** Basta remover a pasta `lib/imu_sim/`, a constante, as linhas que a montam nos `main` e a leitura da UART0 da fase 4. No núcleo, sai só o `on_dev_bytes()`, com o seu leitor de mensagens (emenda do #22).
 
 O OBD não tem simulação dentro do firmware: a ECU simulada é um programa no notebook, e o firmware sempre usa o CAN de verdade, seja o `vcan` ou o TWAI.
 

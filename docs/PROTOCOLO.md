@@ -206,6 +206,8 @@ O PONG passa na frente de tudo na fila de saída (§6.5).
 - O limite é de 10 por segundo; o excesso é descartado e entra em `descartadas`.
 - No notebook (fase 1), os logs também saem no terminal.
 
+*Emenda do #22 (16/10/2026).* O limite vale para qualquer intervalo de 1 s, e não para cada segundo do relógio: um LOG só passa pelo limite se o 10º LOG antes dele passou há pelo menos 1 s. Assim, uma rajada que atravessa a virada de um segundo não passa de 10. O limite é conferido quando o LOG é gerado, antes da fila de saída: um LOG que passou e depois foi descartado pela fila cheia também conta. Ele vale para todos: os da plataforma e os do próprio núcleo, como o do quadro barrado pela lista fechada.
+
 ## 4. Mensagens da Pi para o ESP32
 
 ### 4.1 PING (`0x81`)
@@ -223,6 +225,11 @@ O corpo é vazio: o `seq` do cabeçalho serve de identificador, e o ESP32 o devo
 - A taxa nova vale a partir da próxima leitura da IMU, ou da próxima amostra OBD.
 - A configuração não fica gravada no ESP32: depois de um reinício, ele volta ao padrão até a Pi reenviar (§6.4).
 - O STATUS tem taxa fixa de 1/s.
+
+*Emenda do #22 (16/10/2026):*
+- **Um por valor.** Cada valor fora da lista soma 1, então um TAXAS com os dois campos fora soma 2 em `rejeitadas`. O ESP32 falso já contava assim ([`DECODIFICADOR.md` §4](DECODIFICADOR.md)).
+- **Corpo curto.** Com menos de 2 bytes, o TAXAS soma 1 e não muda nada. Bytes além dos dois campos são ignorados, como o corpo de um PING (§4.1).
+- **A amostra da IMU em curso não se perde.** A leitura seguinte já conta na taxa nova e fecha a amostra se ela já tiver as leituras que a taxa nova pede. Exemplo: a 25/s, com 2 leituras no intervalo, a Pi pede 100/s; a amostra seguinte sai com 3 leituras, e as próximas com 1.
 
 ### 4.3 IMU_SIM (`0x83`), só no desenvolvimento
 

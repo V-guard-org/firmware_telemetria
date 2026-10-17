@@ -18,6 +18,7 @@ O planejamento foi concluído em 13/10/2026. O desenvolvimento começa pela fase
 | Simulador do PC (modelo do carro, controles, roteiros e tela) | [`docs/SIMULADOR.md`](docs/SIMULADOR.md) |
 | Testes, ensaios e o que precisa passar em cada fase | [`docs/TESTES.md`](docs/TESTES.md) |
 | Bancada e fiação (peças, pinos do ESP32, as três placas, fios até a Pi) | [`docs/BANCADA.md`](docs/BANCADA.md) |
+| Esquemático da bancada em 9 folhas desenhadas (abra o arquivo no navegador) | [`docs/esquematico/esquematico.html`](docs/esquematico/esquematico.html) |
 | Resultados dos ensaios (um arquivo por ensaio) | `docs/ensaios/` |
 | Spec e tickets de implementação da fase 1 | [issue #15](https://github.com/V-guard-org/firmware_telemetria/issues/15), com os tickets #16 a #28 (etiqueta `ready-for-agent`) |
 | Mapa de decisões (fechado em 15/10/2026) | [issue #1](https://github.com/V-guard-org/firmware_telemetria/issues/1) (etiqueta `wayfinder:map`) |

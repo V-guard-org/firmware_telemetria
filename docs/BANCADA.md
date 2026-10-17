@@ -10,6 +10,8 @@ A base são as pesquisas:
 
 Os testes que usam esta montagem estão no [`TESTES.md`](TESTES.md). Os termos seguem o [`CONTEXT.md`](../CONTEXT.md).
 
+Os desenhos de cada montagem, em 9 folhas, estão em [`esquematico/esquematico.html`](esquematico/esquematico.html): abra o arquivo no navegador. A página sai do `esquematico/gen.py`; quem mudar a fiação aqui atualiza o `page.html` ou o desenho e roda `python3 docs/esquematico/gen.py`. Se o desenho e este documento discordarem, vale este documento.
+
 ## Resumo
 
 - **Três placas numa linha só,** com um BAT43 por placa e um *pull-up* de 1 kΩ para o 3,3 V da placa do firmware, que é a única que nunca sai da linha (§3).

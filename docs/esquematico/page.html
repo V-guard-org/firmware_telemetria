@@ -1,0 +1,601 @@
+<title>Esquemático da Bancada V-GUARD</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap">
+<style>
+/* Folhas de desenho técnico sobre papel quadriculado: cada folha tem moldura e carimbo,
+   e a cor de cada fio é a mesma em todas as folhas. */
+:root {
+  --paper: #edf2ef; --grid: rgba(30, 70, 60, .07); --sheet: #fbfcfb; --ink: #15212a; --muted: #56666e;
+  --rule: #c6d1cc; --chip: #ffffff; --frame: #15212a;
+  --w33: #d35409; --w5v: #bf1733; --wgnd: #18222a; --wline: #1f5fc4; --wtx: #936800; --wrx: #127a4b;
+  --w27: #7340c0; --wpulse: #bd2577; --wcanh: #8e4a10; --wcanl: #0b7480; --wi2c: #52702a; --usb: #a3afb4;
+  --warn: #a13a0a; --warnbg: #fbe9da;
+  --bb: #f3f4f1; --hole: #9aa4a1; --channel: #e1e5e2; --dbody: #262b2f; --dstripe: #d6dbde; --rbody: #d6bd8a;
+  --rtext: #3a2a08; --led: #e0453d; --pcb: #d3e3ef; --pcbline: #7b9db8; --ic: #2b3238; --ictext: #d7dde0;
+  --icpin: #a7b0b5; --trace: #c3832a; --borne: #3d8a5c; --markbg: #15212a; --markfg: #ffffff;
+  --display: "Barlow Condensed", "Arial Narrow", "Roboto Condensed", sans-serif;
+  --body: "Barlow", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #0e1519; --grid: rgba(160, 200, 190, .055); --sheet: #131d22; --ink: #e2e9ec; --muted: #95a5ad;
+    --rule: #2b3a41; --chip: #18242a; --frame: #8fa1a9;
+    --w33: #ff8b3d; --w5v: #ff5d72; --wgnd: #cbd4d8; --wline: #6aa8ff; --wtx: #f0c03a; --wrx: #4bd08a;
+    --w27: #b590ff; --wpulse: #ff73b8; --wcanh: #e09a5e; --wcanl: #3fcad4; --wi2c: #aac863; --usb: #56666e;
+    --warn: #ffb27a; --warnbg: #3a2415;
+    --bb: #1c262b; --hole: #4f5d63; --channel: #141e22; --dbody: #050708; --dstripe: #9aa5aa; --rbody: #a08a5d;
+    --rtext: #1a1306; --led: #ff6159; --pcb: #1b3142; --pcbline: #45708f; --ic: #070a0c; --ictext: #c9d1d5;
+    --icpin: #7f8a8f; --trace: #c08f3f; --borne: #2a6b47; --markbg: #e2e9ec; --markfg: #0e1519;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --paper: #0e1519; --grid: rgba(160, 200, 190, .055); --sheet: #131d22; --ink: #e2e9ec; --muted: #95a5ad;
+  --rule: #2b3a41; --chip: #18242a; --frame: #8fa1a9;
+  --w33: #ff8b3d; --w5v: #ff5d72; --wgnd: #cbd4d8; --wline: #6aa8ff; --wtx: #f0c03a; --wrx: #4bd08a;
+  --w27: #b590ff; --wpulse: #ff73b8; --wcanh: #e09a5e; --wcanl: #3fcad4; --wi2c: #aac863; --usb: #56666e;
+  --warn: #ffb27a; --warnbg: #3a2415;
+  --bb: #1c262b; --hole: #4f5d63; --channel: #141e22; --dbody: #050708; --dstripe: #9aa5aa; --rbody: #a08a5d;
+  --rtext: #1a1306; --led: #ff6159; --pcb: #1b3142; --pcbline: #45708f; --ic: #070a0c; --ictext: #c9d1d5;
+  --icpin: #7f8a8f; --trace: #c08f3f; --borne: #2a6b47; --markbg: #e2e9ec; --markfg: #0e1519;
+  color-scheme: dark;
+}
+
+body {
+  margin: 0;
+  background-color: var(--paper);
+  background-image: linear-gradient(var(--grid) 1px, transparent 1px), linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+  background-size: 24px 24px;
+  color: var(--ink);
+  font: 400 16px/1.58 var(--body);
+}
+.page {
+  max-width: 1120px; margin: 0 auto;
+  padding-block: 40px 72px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+a { color: var(--wline); text-underline-offset: 2px; }
+a:focus-visible { outline: 2px solid var(--wline); outline-offset: 2px; border-radius: 2px; }
+code { font: 500 .86em var(--mono); background: var(--chip); border: 1px solid var(--rule); padding: 0 4px; border-radius: 3px; }
+
+.eyebrow { font: 600 12px var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); margin: 0; }
+h1 { font: 700 clamp(2.4rem, 6vw, 3.6rem)/1 var(--display); letter-spacing: .005em; margin: 10px 0 14px; text-wrap: balance; }
+.lead { max-width: 70ch; font-size: 1.08rem; margin: 0; }
+.howto { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px 28px; margin-top: 26px; }
+.howto > div { min-width: 0; }
+.howto b { display: block; font: 700 1.1rem var(--display); letter-spacing: .03em; text-transform: uppercase; }
+.howto p { margin: 4px 0 0; color: var(--muted); font-size: .95rem; }
+
+.index { margin-top: 34px; }
+.index h2, .ref h2 { font: 700 1.5rem var(--display); margin: 0 0 8px; }
+.tblwrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: .95rem; }
+th { font: 600 11.5px var(--mono); text-transform: uppercase; letter-spacing: .07em; color: var(--muted); text-align: left;
+  border-bottom: 1.5px solid var(--ink); padding: 8px 10px; white-space: nowrap; }
+td { border-bottom: 1px solid var(--rule); padding: 8px 10px; vertical-align: top; }
+td.n, th.n { font-variant-numeric: tabular-nums; }
+td.mono { font: 500 13px var(--mono); }
+.index td:first-child { font: 700 13px var(--mono); white-space: nowrap; }
+
+.legend { display: flex; flex-wrap: wrap; gap: 10px 22px; margin-top: 30px; padding: 14px 16px;
+  border: 1.5px solid var(--frame); background: var(--sheet); border-radius: 4px; }
+.legend .ttl { font: 700 13px var(--mono); letter-spacing: .08em; text-transform: uppercase; width: 100%; }
+.legend span.item { display: inline-flex; align-items: center; gap: 8px; font: 500 13px var(--mono); }
+.sw { display: inline-block; width: 30px; height: 5px; border-radius: 3px; background: var(--c); }
+.sw.thick { height: 8px; }
+
+.sec { margin-top: 76px; scroll-margin-top: 16px; }
+.sec-h { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; border-bottom: 2px solid var(--ink); padding-bottom: 8px; margin-bottom: 18px; }
+.sheetno { font: 700 12.5px var(--mono); letter-spacing: .08em; text-transform: uppercase; background: var(--ink);
+  color: var(--paper); padding: 3px 8px; border-radius: 3px; }
+.sec-h h2 { font: 700 2rem/1.1 var(--display); margin: 0; text-wrap: balance; }
+.when { margin: 0 0 0 auto; font: 500 13px var(--mono); color: var(--muted); }
+.prose { max-width: 72ch; }
+.prose p { margin: 0 0 12px; }
+ul.facts, ol.steps { padding-left: 1.2em; margin: 10px 0; max-width: 78ch; }
+ul.facts li, ol.steps li { margin: 6px 0; }
+ol.steps li::marker { font: 700 14px var(--mono); }
+
+figure.sheet { margin: 22px 0; background: var(--sheet); border: 1.5px solid var(--frame); border-radius: 4px; }
+.scroll { overflow-x: auto; padding: 18px; }
+.sheet svg { display: block; width: 100%; height: auto; margin-inline: auto; }
+figcaption { padding: 0 18px 14px; color: var(--muted); font-size: .95rem; max-width: 84ch; }
+.carimbo { display: grid; grid-template-columns: auto 1fr auto auto; border-top: 1.5px solid var(--frame); font: 500 12px var(--mono); }
+.carimbo > div { padding: 7px 12px; border-left: 1px solid var(--rule); min-width: 0; }
+.carimbo > div:first-child { border-left: 0; font-weight: 700; }
+.carimbo span { display: block; font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+@media (max-width: 640px) {
+  .carimbo { grid-template-columns: 1fr 1fr; }
+  .carimbo > div:nth-child(3) { border-left: 0; }
+  .carimbo > div:nth-child(n+3) { border-top: 1px solid var(--rule); }
+  .when { margin-left: 0; width: 100%; }
+}
+
+.cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 18px 32px; align-items: start; }
+.cols > * { min-width: 0; }
+h3 { font: 700 1.15rem var(--display); letter-spacing: .03em; text-transform: uppercase; margin: 18px 0 6px; }
+.alerta { border: 1.5px dashed var(--warn); background: var(--warnbg); padding: 12px 16px; border-radius: 4px; margin: 16px 0; max-width: 84ch; }
+.alerta b { color: var(--warn); }
+.nb { display: inline-grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; border: 3px solid var(--c);
+  background: var(--chip); font: 700 11px var(--mono); }
+.mk { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: var(--markbg);
+  color: var(--markfg); font: 700 12px var(--display); margin-right: 6px; }
+ul.callouts { list-style: none; padding: 0; margin: 10px 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 8px 28px; }
+ul.callouts li { display: flex; align-items: flex-start; gap: 4px; min-width: 0; }
+.ref { margin-top: 76px; }
+footer { margin-top: 72px; border-top: 2px solid var(--ink); padding-top: 12px; color: var(--muted); font: 500 12.5px var(--mono); }
+
+/* Desenhos. Cada classe de cor (c33, ctx…) define --c, e as peças pintam com ela. */
+.c33 { --c: var(--w33); } .c5v { --c: var(--w5v); } .cgnd { --c: var(--wgnd); } .cline { --c: var(--wline); }
+.ctx { --c: var(--wtx); } .crx { --c: var(--wrx); } .c27 { --c: var(--w27); } .cpulse { --c: var(--wpulse); }
+.ccanh { --c: var(--wcanh); } .ccanl { --c: var(--wcanl); } .ci2c { --c: var(--wi2c); } .cusb { --c: var(--usb); }
+.cmisc, .cjump { --c: var(--ink); }
+.wire { fill: none; stroke: var(--c); stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; }
+.wire.dash { stroke-dasharray: 7 6; }
+.wire.cusb { stroke-width: 5; }
+.wire.cmisc { stroke-width: 1.8; }
+.wire.cjump { stroke-width: 4; }
+.dot, .arrow { fill: var(--c); }
+.comp { fill: var(--chip); stroke: var(--ink); stroke-width: 1.6; }
+.compline { stroke: var(--ink); stroke-width: 1.8; fill: none; stroke-linecap: round; }
+.compsolid { fill: var(--ink); }
+.block { fill: var(--chip); stroke: var(--ink); stroke-width: 1.6; }
+.block.dashed { stroke-dasharray: 7 5; }
+.pinsq, .pinhole { fill: var(--ink); }
+.openend { fill: var(--sheet); stroke: var(--wgnd); stroke-width: 2; }
+.tagbox { fill: var(--chip); stroke: var(--c); stroke-width: 1.6; }
+.jcap { fill: none; stroke: var(--ink); stroke-width: 1.4; stroke-dasharray: 3 2; }
+.bb { fill: var(--bb); stroke: var(--rule); stroke-width: 1.5; }
+.channel { fill: var(--channel); }
+.hole { fill: var(--hole); }
+.region { fill: none; stroke: var(--warn); stroke-width: 1.4; stroke-dasharray: 5 4; }
+.lead { stroke: var(--icpin); stroke-width: 2; stroke-linecap: round; }
+.dbody { fill: var(--dbody); stroke: var(--muted); stroke-width: .8; }
+.dstripe { fill: var(--dstripe); }
+.rbody { fill: var(--rbody); stroke: var(--muted); stroke-width: .6; }
+.ledbody { fill: var(--led); stroke: var(--ink); stroke-width: 1; }
+.header { fill: var(--ic); }
+.hpin, .icpin, .icdot { fill: var(--icpin); }
+.hpinhi { fill: var(--c); stroke: var(--sheet); stroke-width: 1.5; }
+.pcb { fill: var(--pcb); stroke: var(--pcbline); stroke-width: 1.5; }
+.mhole { fill: var(--sheet); stroke: var(--pcbline); stroke-width: 1.2; }
+.trace { fill: none; stroke: var(--trace); stroke-width: 2.2; stroke-linejoin: round; }
+.ic { fill: var(--ic); }
+.xmark { stroke: var(--warn); stroke-width: 4; stroke-linecap: round; }
+.padhi { fill: var(--c); stroke: var(--ink); stroke-width: .8; }
+.xtal { fill: var(--icpin); stroke: var(--ink); stroke-width: .8; }
+.borne { fill: var(--borne); }
+.screw { fill: var(--icpin); stroke: var(--ink); stroke-width: 1; }
+.markc { fill: var(--markbg); }
+.numc { fill: var(--chip); stroke: var(--c); stroke-width: 3; }
+.t { font: 500 12px var(--mono); fill: var(--ink); }
+.tl { font: 600 12px var(--mono); fill: var(--ink); }
+.ts { font: 400 11px var(--mono); fill: var(--muted); }
+.tb { font: 700 15px var(--display); letter-spacing: .06em; fill: var(--ink); }
+.tm { font: 500 9.5px var(--mono); fill: var(--muted); }
+.rt { font: 700 8.5px var(--mono); fill: var(--rtext); }
+.tic { font: 700 10px var(--mono); fill: var(--ictext); }
+.tpin { font: 700 10px var(--mono); fill: var(--ic); }
+.numt { font: 700 9.5px var(--mono); fill: var(--ink); }
+.markt { font: 700 12px var(--display); fill: var(--markfg); }
+.f33 { fill: var(--w33); } .f5v { fill: var(--w5v); } .fgnd { fill: var(--ink); } .fline { fill: var(--wline); }
+.ftx { fill: var(--wtx); } .frx { fill: var(--wrx); } .f27 { fill: var(--w27); } .fpulse { fill: var(--wpulse); }
+.fcanh { fill: var(--wcanh); } .fcanl { fill: var(--wcanl); } .fi2c { fill: var(--wi2c); } .fwarn { fill: var(--warn); }
+.fmisc { fill: var(--ink); }
+</style>
+
+<div class="page">
+<header>
+  <p class="eyebrow">V-GUARD · firmware · BANCADA.md e ADR-0010</p>
+  <h1>Esquemático da bancada</h1>
+  <p class="lead">Todas as ligações físicas do firmware, folha por folha: a bancada de diodos da fase 2, os fios até a Raspberry Pi na fase 4, a preparação do módulo CAN e a sessão com o transceptor antes do carro. O conteúdo vem do <code>docs/BANCADA.md</code> (ticket #11) e da ADR-0010. Nada foi montado ainda, e as peças estão para conferir. Se esta página e o BANCADA.md discordarem, vale o BANCADA.md.</p>
+  <div class="howto">
+    <div><b>Cor é função</b><p>A mesma cor quer dizer o mesmo tipo de fio em todas as folhas. O TX e o RX são sempre os de uma placa ESP32. Se tiver jumpers dessas cores, use: fica fácil conferir a montagem com a folha.</p></div>
+    <div><b>Placa é placa ESP32</b><p>As três placas são iguais (módulo WROOM-32). O que muda entre elas é o programa gravado e os fios.</p></div>
+    <div><b>Círculo com número é fio</b><p>Na folha 4, cada círculo é a ponta de um fio que vem de uma placa ou da Pi. A tabela embaixo dela diz de onde ele vem.</p></div>
+  </div>
+</header>
+
+<nav class="index" aria-label="Folhas">
+  <h2>As folhas</h2>
+  <div class="tblwrap"><table>
+    <thead><tr><th>Folha</th><th>O que mostra</th><th>Quando se usa</th></tr></thead>
+    <tbody>
+      <tr><td>1</td><td><a href="#folha-1">A mesa da fase 2</a>: o notebook, o hub e as três placas</td><td>Fase 2</td></tr>
+      <tr><td>2</td><td><a href="#folha-2">Barramento de bancada</a>: a LINHA, os diodos e o R1</td><td>Fase 2 em diante</td></tr>
+      <tr><td>3</td><td><a href="#folha-3">GPIO27 e o LED de liberação</a>: a trava do transceptor na bancada</td><td>Fase 2 em diante</td></tr>
+      <tr><td>4</td><td><a href="#folha-4">Protoboard, furo a furo</a>: onde entra cada peça e cada fio</td><td>Fases 2 e 4</td></tr>
+      <tr><td>5</td><td><a href="#folha-5">Pinos da Pi</a>: o conector de 40 pinos</td><td>Fases 3 e 4</td></tr>
+      <tr><td>6</td><td><a href="#folha-6">Fios até a Pi</a>: UART2, pulso, GND e 5 V</td><td>Fase 4</td></tr>
+      <tr><td>7</td><td><a href="#folha-7">Preparar o módulo CAN</a>: tirar o MCP2515 e soltar o pino S</td><td>Antes da sessão</td></tr>
+      <tr><td>8</td><td><a href="#folha-8">Sessão com transceptor</a>: dois TJA1050 no lugar dos diodos</td><td>Antes do carro</td></tr>
+      <tr><td>9</td><td><a href="#folha-9">IMU real</a>: os pinos reservados</td><td>Quando a IMU chegar</td></tr>
+    </tbody>
+  </table></div>
+  <p>Depois das folhas: <a href="#pinos">os pinos da placa do firmware</a>, <a href="#pecas">as peças</a>, <a href="#medir">montar e medir</a> e <a href="#aberto">o que ainda não está definido</a>.</p>
+</nav>
+
+<section class="legend" aria-label="Cores dos fios">
+  <span class="ttl">Cores dos fios</span>
+  <span class="item"><span class="sw" style="--c: var(--w33)"></span>3V3</span>
+  <span class="item"><span class="sw" style="--c: var(--w5v)"></span>5 V</span>
+  <span class="item"><span class="sw" style="--c: var(--wgnd)"></span>GND</span>
+  <span class="item"><span class="sw" style="--c: var(--wline)"></span>LINHA do CAN</span>
+  <span class="item"><span class="sw" style="--c: var(--wtx)"></span>TX de uma placa ESP32</span>
+  <span class="item"><span class="sw" style="--c: var(--wrx)"></span>RX de uma placa ESP32</span>
+  <span class="item"><span class="sw" style="--c: var(--w27)"></span>GPIO27: trava</span>
+  <span class="item"><span class="sw" style="--c: var(--wpulse)"></span>pulso do horário</span>
+  <span class="item"><span class="sw" style="--c: var(--wcanh)"></span>CANH</span>
+  <span class="item"><span class="sw" style="--c: var(--wcanl)"></span>CANL</span>
+  <span class="item"><span class="sw" style="--c: var(--wi2c)"></span>I²C</span>
+  <span class="item"><span class="sw thick" style="--c: var(--usb)"></span>cabo USB</span>
+</section>
+
+<section class="sec" id="folha-1">
+  <div class="sec-h"><span class="sheetno">Folha 1</span><h2>A mesa da fase 2</h2><p class="when">fase 2 · bancada</p></div>
+  <div class="prose">
+    <p>Três placas ESP32 iguais, cada uma com um programa: o firmware, o adaptador USB-CAN (Doggie) e o gerador de tráfego, que imita as centrais do carro conversando. Não há transceptor na bancada: diodos fazem o papel dele (pesquisa #2). As três placas ficam no mesmo hub USB e na mesma protoboard.</p>
+  </div>
+  <figure class="sheet">
+    <div class="scroll">{{desk}}</div>
+    <figcaption>O notebook vê cada placa por um nome fixo, dado pela porta do hub. Só a placa do firmware leva o 3V3 e o GPIO27 até a protoboard.</figcaption>
+    <div class="carimbo"><div>1/9</div><div><span>folha</span>A mesa da fase 2</div><div><span>quando</span>fase 2</div><div><span>fonte</span>BANCADA §3.1 e §5</div></div>
+  </figure>
+  <div class="tblwrap"><table>
+    <thead><tr><th>Porta do hub</th><th>Placa</th><th>Nome fixo</th><th>Quem abre</th></tr></thead>
+    <tbody>
+      <tr><td class="n">1</td><td>Firmware</td><td class="mono">/dev/vguard-esp32</td><td>O simulador (<code>--porta</code>)</td></tr>
+      <tr><td class="n">2</td><td>Adaptador USB-CAN</td><td class="mono">/dev/vguard-adaptador</td><td>O <code>slcand</code>, que cria o <code>can0</code></td></tr>
+      <tr><td class="n">3</td><td>Gerador de tráfego</td><td class="mono">/dev/vguard-gerador</td><td>O monitor serial, para ler os contadores</td></tr>
+    </tbody>
+  </table></div>
+  <p class="prose">A regra do udev que dá esses nomes, e os comandos para subir o <code>can0</code>, estão no BANCADA.md §5.</p>
+</section>
+
+<section class="sec" id="folha-2">
+  <div class="sec-h"><span class="sheetno">Folha 2</span><h2>Barramento de bancada</h2><p class="when">fase 2 em diante</p></div>
+  <div class="prose">
+    <p>Cada placa liga o RX direto na LINHA e o TX por um diodo BAT43. Assim, cada uma lê os próprios bits, como o controlador CAN exige. O R1 segura a LINHA em 1 (recessivo); qualquer placa que põe o TX em 0 puxa a LINHA pelo seu diodo (dominante).</p>
+  </div>
+  <figure class="sheet">
+    <div class="scroll">{{bus}}</div>
+    <figcaption>O TX e o RX nunca se cruzam entre as placas: todo RX vai na LINHA, e todo TX passa por um diodo, com a faixa (o catodo) do lado do TX.</figcaption>
+    <div class="carimbo"><div>2/9</div><div><span>folha</span>Barramento de bancada</div><div><span>quando</span>fase 2 em diante</div><div><span>fonte</span>BANCADA §3 · pesquisa #2</div></div>
+  </figure>
+  <div class="cols">
+    <div class="tblwrap"><table>
+      <thead><tr><th>TX das placas</th><th>LINHA</th><th>O que acontece</th></tr></thead>
+      <tbody>
+        <tr><td>Todos em 1 (recessivo)</td><td class="n">≈ 3,3 V</td><td>Os diodos ficam bloqueados, e o R1 segura a LINHA em 1</td></tr>
+        <tr><td>Algum em 0 (dominante)</td><td class="n">≈ 0,45 V</td><td>O diodo daquela placa conduz e puxa a LINHA</td></tr>
+      </tbody>
+    </table></div>
+    <ul class="facts">
+      <li><b>O adaptador é invertido de propósito:</b> TX no GPIO26 e RX no GPIO25, os pinos do Doggie. Cole nele a etiqueta "TX 26 · RX 25".</li>
+      <li><b>A placa do firmware nunca sai da LINHA:</b> é ela que alimenta o R1. Nenhuma outra placa liga o 3V3.</li>
+      <li><b>Tirar uma placa da LINHA</b> é tirar o diodo e o fio do RX dela. O USB continua ligado, porque uma placa sem energia pode prender a LINHA.</li>
+      <li><b>A ponta solta do teste "linha presa"</b> fica presa no GND e só encosta na LINHA durante esse teste. É seguro: passam 3,3 mA pelo R1.</li>
+      <li><b>Sem BAT43:</b> 1N4148 com o R1 de 2,2 kΩ. Não use 1N5817.</li>
+      <li><b>Fios de até 10 cm</b> entre cada placa e a protoboard.</li>
+    </ul>
+  </div>
+</section>
+
+<section class="sec" id="folha-3">
+  <div class="sec-h"><span class="sheetno">Folha 3</span><h2>GPIO27 e o LED de liberação</h2><p class="when">fase 2 em diante</p></div>
+  <div class="prose">
+    <p>O GPIO27 é a trava do transceptor. O firmware só sabe puxar esse pino para 0 (saída open-drain); quem segura o 1 é um resistor. Na bancada não há transceptor, então o 10 kΩ faz esse papel. Sem ele, o pino ficaria solto, e o osciloscópio não conseguiria provar que ele nunca foi a 0 no boot.</p>
+  </div>
+  <figure class="sheet">
+    <div class="scroll">{{gpio27}}</div>
+    <figcaption>Com o GPIO27 em 0, a corrente passa pelo 1 kΩ e pelo LED, e o LED acende. Com o pino solto, os dois lados do LED ficam em 3,3 V, e ele apaga.</figcaption>
+    <div class="carimbo"><div>3/9</div><div><span>folha</span>GPIO27 e o LED de liberação</div><div><span>quando</span>fase 2 em diante</div><div><span>fonte</span>BANCADA §4</div></div>
+  </figure>
+  <div class="tblwrap"><table>
+    <thead><tr><th>GPIO27</th><th>Tensão</th><th>LED</th><th>Quer dizer</th></tr></thead>
+    <tbody>
+      <tr><td>Solto (reset, boot ou "1")</td><td class="n">3,3 V</td><td>Apagado</td><td>Transceptor silencioso</td></tr>
+      <tr><td>Em 0</td><td class="n">0 V</td><td>Aceso</td><td>Transceptor liberado: o ESP32 pode falar no CAN</td></tr>
+    </tbody>
+  </table></div>
+  <p class="prose">Exemplo: no roteiro "Pi ausente", o LED apaga até 3 s depois do último PING. Dá para ver isso sem o osciloscópio.</p>
+</section>
+
+<section class="sec" id="folha-4">
+  <div class="sec-h"><span class="sheetno">Folha 4</span><h2>Protoboard, furo a furo</h2><p class="when">fases 2 e 4</p></div>
+  <div class="prose">
+    <p>Uma sugestão de posição para cada peça numa protoboard de 400 furos. As colunas exatas não importam; importa o que fica junto. Os 5 furos de uma coluna (de a a e, ou de f a j) são ligados entre si, e cada trilho é um fio só, de ponta a ponta.</p>
+  </div>
+  <figure class="sheet">
+    <div class="scroll">{{breadboard}}</div>
+    <figcaption>Os diodos ficam com a faixa para cima, do lado da coluna do TX. O R1 vai do trilho 3V3 à coluna 24, e um fio leva a coluna 24 ao trilho LINHA. O fio da coluna 1 liga os dois trilhos de GND.</figcaption>
+    <div class="carimbo"><div>4/9</div><div><span>folha</span>Protoboard, furo a furo</div><div><span>quando</span>fases 2 e 4</div><div><span>fonte</span>BANCADA §3.2 · sugestão</div></div>
+  </figure>
+  <div class="cols">
+    <div>
+      <h3>Os fios que chegam</h3>
+      <div class="tblwrap"><table>
+        <thead><tr><th>Fio</th><th>Vem de</th><th>Entra em</th><th>Fase</th></tr></thead>
+        <tbody>
+          <tr><td><span class="nb" style="--c: var(--w33)">1</span></td><td>3V3 da placa do firmware</td><td>trilho 3V3, coluna 22</td><td>2</td></tr>
+          <tr><td><span class="nb" style="--c: var(--wgnd)">2</span></td><td>GND do firmware</td><td>trilho GND de baixo</td><td>2</td></tr>
+          <tr><td><span class="nb" style="--c: var(--wtx)">3</span></td><td>GPIO25 (TX) do firmware</td><td>coluna 3, linha f</td><td>2</td></tr>
+          <tr><td><span class="nb" style="--c: var(--wrx)">4</span></td><td>GPIO26 (RX) do firmware</td><td>trilho LINHA</td><td>2</td></tr>
+          <tr><td><span class="nb" style="--c: var(--w27)">5</span></td><td>GPIO27 do firmware</td><td>coluna 28, linha e</td><td>2</td></tr>
+          <tr><td><span class="nb" style="--c: var(--wgnd)">6</span></td><td>GND do adaptador</td><td>trilho GND de baixo</td><td>2</td></tr>
+          <tr><td><span class="nb" style="--c: var(--wtx)">7</span></td><td>GPIO26 (TX) do adaptador</td><td>coluna 10, linha f</td><td>2</td></tr>
+          <tr><td><span class="nb" style="--c: var(--wrx)">8</span></td><td>GPIO25 (RX) do adaptador</td><td>trilho LINHA</td><td>2</td></tr>
+          <tr><td><span class="nb" style="--c: var(--wgnd)">9</span></td><td>GND do gerador</td><td>trilho GND de baixo</td><td>2</td></tr>
+          <tr><td><span class="nb" style="--c: var(--wtx)">10</span></td><td>GPIO25 (TX) do gerador</td><td>coluna 17, linha f</td><td>2</td></tr>
+          <tr><td><span class="nb" style="--c: var(--wrx)">11</span></td><td>GPIO26 (RX) do gerador</td><td>trilho LINHA</td><td>2</td></tr>
+          <tr><td><span class="nb" style="--c: var(--wtx)">12</span></td><td>GPIO17 (TX2) do firmware</td><td>coluna 2, linha a</td><td>4</td></tr>
+          <tr><td><span class="nb" style="--c: var(--wtx)">13</span></td><td>pino 33 da Pi</td><td>coluna 6, linha a</td><td>4</td></tr>
+          <tr><td><span class="nb" style="--c: var(--wrx)">14</span></td><td>GPIO16 (RX2) do firmware</td><td>coluna 8, linha a</td><td>4</td></tr>
+          <tr><td><span class="nb" style="--c: var(--wrx)">15</span></td><td>pino 32 da Pi</td><td>coluna 12, linha a</td><td>4</td></tr>
+          <tr><td><span class="nb" style="--c: var(--wpulse)">16</span></td><td>GPIO18 (pulso) do firmware</td><td>coluna 14, linha a</td><td>4, build de teste</td></tr>
+          <tr><td><span class="nb" style="--c: var(--wpulse)">17</span></td><td>pino 36 da Pi</td><td>coluna 18, linha a</td><td>4, build de teste</td></tr>
+          <tr><td><span class="nb" style="--c: var(--wgnd)">18</span></td><td>pino 34 da Pi (GND)</td><td>trilho GND de cima</td><td>4</td></tr>
+        </tbody>
+      </table></div>
+    </div>
+    <div>
+      <h3>As peças na protoboard</h3>
+      <ul class="facts">
+        <li><b>D1, D2 e D3 (BAT43):</b> do trilho LINHA à linha j da coluna do TX de cada placa, com a faixa para cima.</li>
+        <li><b>R1 (1 kΩ):</b> do trilho 3V3 à coluna 24. Um fio vai da coluna 24 ao trilho LINHA.</li>
+        <li><b>GPIO27:</b> o 10 kΩ do trilho 3V3 à coluna 28, o 1 kΩ do trilho 3V3 à coluna 30, e o LED com a perna longa (+) na coluna 30 e a curta na 28.</li>
+        <li><b>Fase 4:</b> três resistores de 1 kΩ na linha c, das colunas 2 a 6, 8 a 12 e 14 a 18. Cada um fica entre o fio do ESP32 e o fio da Pi.</li>
+        <li><b>Ponta solta "linha presa":</b> presa no trilho GND de baixo (coluna 23), com a outra ponta marcada.</li>
+      </ul>
+      <div class="alerta"><b>Use as cores.</b> Se os jumpers seguirem as cores da legenda, a protoboard montada fica igual à folha, e um fio no lugar errado aparece na hora.</div>
+    </div>
+  </div>
+</section>
+
+<section class="sec" id="folha-5">
+  <div class="sec-h"><span class="sheetno">Folha 5</span><h2>Pinos da Pi</h2><p class="when">fases 3 e 4</p></div>
+  <div class="prose">
+    <p>O conector de 40 pinos da Pi, visto de cima. O pino 1 tem a solda quadrada; os pinos ímpares ficam numa fileira e os pares na outra. A Pi usa a UART5 (<code>/dev/ttyAMA5</code>), que sai nos pinos 32 e 33.</p>
+  </div>
+  <figure class="sheet">
+    <div class="scroll">{{pi}}</div>
+    <figcaption>O mesmo conector nas duas fases: na fase 3, o jumper testa a UART5 sozinha; na fase 4, os mesmos pinos recebem os fios do ESP32.</figcaption>
+    <div class="carimbo"><div>5/9</div><div><span>folha</span>Pinos da Pi</div><div><span>quando</span>fases 3 e 4</div><div><span>fonte</span>BANCADA §6 e §7 · pesquisa #5</div></div>
+  </figure>
+  <ul class="facts">
+    <li><b>Fase 3:</b> antes de ligar o ESP32, um jumper do pino 32 (TX) ao 33 (RX) prova a UART5 com <code>python3 host/link_test.py --laco --porta /dev/ttyAMA5</code>. Tire o jumper antes de ligar o ESP32.</li>
+    <li><b>Fase 4:</b> os pinos 32, 33, 34 e 36 ficam juntos, então os quatro fios de sinal formam um cabo só. O 5 V vai num conector separado, com etiqueta.</li>
+    <li><b>A conferir com a equipe:</b> se alguém já reservou um pino da Pi (botão, LED, buzzer), compare com o GPIO16, no pino 36.</li>
+  </ul>
+</section>
+
+<section class="sec" id="folha-6">
+  <div class="sec-h"><span class="sheetno">Folha 6</span><h2>Fios até a Pi</h2><p class="when">fase 4 · integração</p></div>
+  <div class="prose">
+    <p>Na fase 4, o firmware fala com a Pi pela UART2 (GPIO17 e GPIO16), e não pelo USB. O USB (a UART0) continua ligado ao notebook e leva a IMU_SIM enquanto a IMU for simulada (ADR-0009). Cada fio de sinal passa por um resistor de 1 kΩ.</p>
+  </div>
+  <figure class="sheet">
+    <div class="scroll">{{phase4}}</div>
+    <figcaption>As setas mostram o sentido do sinal. O fio de 5 V, tracejado, só entra quando o USB está fora.</figcaption>
+    <div class="carimbo"><div>6/9</div><div><span>folha</span>Fios até a Pi</div><div><span>quando</span>fase 4</div><div><span>fonte</span>BANCADA §7 · ADR-0009</div></div>
+  </figure>
+  <div class="cols">
+    <div>
+      <h3>Uma fonte só</h3>
+      <div class="tblwrap"><table>
+        <thead><tr><th>Situação</th><th>USB do notebook</th><th>Fio de 5 V da Pi</th></tr></thead>
+        <tbody>
+          <tr><td>T40 com a IMU simulada</td><td>ligado, alimenta</td><td><b>desligado</b></td></tr>
+          <tr><td>IMU real, sem notebook</td><td>fora</td><td>ligado, alimenta (com o PTC)</td></tr>
+          <tr><td>Regravar o firmware</td><td>ligado</td><td>desligado</td></tr>
+        </tbody>
+      </table></div>
+      <div class="alerta"><b>Regra:</b> o fio de 5 V sai sempre que o USB entra. Duas fontes ligadas juntas podem estragar a placa, a porta USB do notebook ou a fonte da Pi.</div>
+    </div>
+    <ul class="facts">
+      <li><b>Por que 1 kΩ em cada sinal:</b> com o ESP32 no USB e a Pi desligada, o TX do ESP32 empurraria corrente para dentro de um pino sem energia. O resistor limita essa corrente a uns 3 mA, nos dois sentidos.</li>
+      <li><b>Placas WROVER:</b> nelas, o GPIO16 e o GPIO17 são da memória extra. A UART2 vai então para o GPIO33 (TX) e o GPIO32 (RX). O nome do módulo está na tampa metálica.</li>
+      <li><b>O pulso do GPIO18</b> só existe no build de teste (<code>VGUARD_TEST_PULSE_GPIO=18</code>), para medir o horário (TESTES §7.2).</li>
+      <li>O GPIO25 e o GPIO26 continuam na LINHA da bancada, com o adaptador ligado ao notebook pelo <code>can0</code>.</li>
+    </ul>
+  </div>
+</section>
+
+<section class="sec" id="folha-7">
+  <div class="sec-h"><span class="sheetno">Folha 7</span><h2>Preparar o módulo CAN</h2><p class="when">antes da sessão com transceptor</p></div>
+  <div class="prose">
+    <p>O módulo comprado tem dois chips: o MCP2515, um controlador CAN de 18 pernas, e o TJA1050, um transceptor de 8 pernas. O firmware usa só o TJA1050, com o CAN interno do ESP32 (ADR-0010). O MCP2515 mantém a saída do TJA1050 em nível alto e brigaria com o TX do ESP32, por isso ele sai da placa.</p>
+  </div>
+  <figure class="sheet">
+    <div class="scroll">{{module}}</div>
+    <figcaption>Desenho genérico: a posição das peças muda de módulo para módulo. Confira cada ponto com o multímetro antes de soldar.</figcaption>
+    <div class="carimbo"><div>7/9</div><div><span>folha</span>Preparar o módulo CAN</div><div><span>quando</span>antes da sessão</div><div><span>fonte</span>BANCADA §9.1 · ADR-0010</div></div>
+  </figure>
+  <ul class="callouts">
+    <li><span class="mk">A</span><span>O MCP2515 sai da placa.</span></li>
+    <li><span class="mk">B</span><span>Ilha 1 do MCP2515 (TXCAN), ligada ao TXD do TJA1050: solde aqui o fio do TXD.</span></li>
+    <li><span class="mk">C</span><span>Ilha 2 do MCP2515 (RXCAN), ligada ao RXD: solde aqui o fio do RXD.</span></li>
+    <li><span class="mk">D</span><span>Perna 8 do TJA1050 (S): solte da ilha se ela for ao GND, e solde um fio nela.</span></li>
+    <li><span class="mk">E</span><span>J1, a terminação de 120 Ω: posto na bancada, tirado no carro.</span></li>
+    <li><span class="mk">F</span><span>Borne de CANH e CANL, para o par trançado.</span></li>
+    <li><span class="mk">G</span><span>Conector: o VCC vai ao 5 V e o GND ao GND. CS, SO, SI, SCK e INT ficam soltos.</span></li>
+  </ul>
+  <h3>Passo a passo, começando pelo módulo de reserva</h3>
+  <ol class="steps">
+    <li>Com o módulo desligado, confira com o multímetro se a perna 8 (S) do TJA1050 tem continuidade com o GND e se o J1 está na placa.</li>
+    <li>Tire o MCP2515: corte as pernas rente ao corpo com o alicate de corte, tire o corpo e limpe as ilhas com o ferro de ponta fina e a malha.</li>
+    <li>Ache as ilhas dos fios. A ilha 1 do MCP2515 deve ir ao pino 1 (TXD) do TJA1050, e a ilha 2 ao pino 4 (RXD). Confira com o multímetro, porque o desenho da placa pode variar.</li>
+    <li>Se o pino S estiver ligado ao GND, solte-o: aqueça a perna 8 e erga-a da ilha com uma agulha, ou corte a trilha rente a ela. Depois, solde um fio na perna 8.</li>
+    <li>Meça de novo: a perna 8 sem continuidade com o GND e, com o J1 posto, cerca de 120 Ω entre o CANH e o CANL.</li>
+  </ol>
+</section>
+
+<section class="sec" id="folha-8">
+  <div class="sec-h"><span class="sheetno">Folha 8</span><h2>Sessão com transceptor</h2><p class="when">antes do carro · 1 a 2 h</p></div>
+  <div class="prose">
+    <p>Uma sessão curta troca os diodos por dois módulos preparados: o módulo A na placa do firmware e o B no adaptador. Ela prova o que a bancada de diodos não prova: o receptor funcionando com o transceptor silencioso, que é o que a escuta de 1 s usa, e o JP1 cortando a transmissão de verdade. O gerador fica fora, porque não tem transceptor.</p>
+  </div>
+  <figure class="sheet">
+    <div class="scroll">{{session}}</div>
+    <figcaption>Os dois lados são quase iguais. No adaptador, o TX e o RX trocam de pino, e o pino S vai ao GND pelo JP2 em vez de ir ao GPIO27. Cada barra "3V3" é o 3V3 da própria placa.</figcaption>
+    <div class="carimbo"><div>8/9</div><div><span>folha</span>Sessão com transceptor</div><div><span>quando</span>antes do carro</div><div><span>fonte</span>BANCADA §9.2 · TESTES §10.7</div></div>
+  </figure>
+  <div class="cols">
+    <div>
+      <h3>Os jumpers</h3>
+      <div class="tblwrap"><table>
+        <thead><tr><th>Jumper</th><th>Aberto</th><th>Fechado</th></tr></thead>
+        <tbody>
+          <tr><td>JP1 · firmware</td><td>S em 3,3 V: silencioso, seja qual for o firmware</td><td>O GPIO27 manda</td></tr>
+          <tr><td>JP2 · adaptador</td><td>Só escuta: o papel de testemunha no carro</td><td>Modo normal: responde e dá ACK na bancada</td></tr>
+        </tbody>
+      </table></div>
+      <h3>Antes de ligar no ESP32</h3>
+      <p>Com o módulo alimentado e o JP1 aberto:</p>
+      <ul class="facts">
+        <li>o pino S marca cerca de 3,3 V;</li>
+        <li>com o barramento parado, a saída do divisor do RXD marca cerca de 3,3 V, e nunca 5 V.</li>
+      </ul>
+    </div>
+    <div>
+      <h3>Por que cada peça</h3>
+      <ul class="facts">
+        <li><b>O 10 kΩ do pino S não pode faltar.</b> Com o S solto, o TJA1050 fica em modo normal e transmite. É esse resistor que garante o silêncio por padrão.</li>
+        <li><b>O divisor do RXD também não.</b> O TJA1050 só funciona de 4,75 a 5,25 V, e o RXD sai nessa tensão. O divisor de 10 kΩ e 20 kΩ baixa para cerca de 3,3 V, porque o ESP32 não aceita 5 V. O TXD e o S aceitam os 3,3 V do ESP32 direto.</li>
+        <li><b>5 V pelo USB:</b> meça o pino 5V da placa com o módulo ligado. Abaixo de 4,75 V, alimente os módulos por uma fonte de 5 V, com o GND comum.</li>
+        <li><b>J1 posto nos dois módulos:</b> com tudo desligado, dá cerca de 60 Ω entre o CANH e o CANL. No carro, o J1 sai, porque o carro já tem terminação.</li>
+      </ul>
+    </div>
+  </div>
+  <h3>Os testes da sessão</h3>
+  <div class="tblwrap"><table>
+    <thead><tr><th>Teste</th><th>Como</th><th>Resultado esperado</th></tr></thead>
+    <tbody>
+      <tr><td>Leitura normal</td><td>JP1 fechado; um roteiro com <code>confere</code></td><td>Passa como na bancada de diodos</td></tr>
+      <tr><td>Receptor com o transceptor silencioso</td><td>Adaptador a 250 kbit/s, com tráfego do notebook (<code>cangen can0</code>)</td><td>VELOCIDADE_ERRADA: o RX vê o barramento durante a escuta</td></tr>
+      <tr><td>Jumper aberto</td><td>JP1 aberto; um roteiro normal</td><td>O LED acende, mas o <code>candump can0</code> não mostra nenhuma requisição nossa; o OBD vai a FALHA_CAN e, na 3ª falha, a BLOQUEADO</td></tr>
+      <tr><td>Boot, reinício e pane</td><td>JP1 fechado; Pi ausente; botão EN, reinício e a pane do build de teste</td><td>Nenhum quadro do ESP32 no <code>candump can0</code></td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section class="sec" id="folha-9">
+  <div class="sec-h"><span class="sheetno">Folha 9</span><h2>IMU real</h2><p class="when">quando a IMU chegar</p></div>
+  <div class="prose">
+    <p>O modelo da IMU ainda não foi comprado (T14.1). Os pinos já estão reservados na placa do firmware, e o resto da fiação não muda.</p>
+  </div>
+  <figure class="sheet">
+    <div class="scroll">{{imu}}</div>
+    <figcaption>O GPIO34 só serve como entrada, então não faz falta para mais nada. O firmware lê a IMU por tempo e não usa o INT hoje.</figcaption>
+    <div class="carimbo"><div>9/9</div><div><span>folha</span>IMU real</div><div><span>quando</span>quando a IMU chegar</div><div><span>fonte</span>BANCADA §8</div></div>
+  </figure>
+  <ul class="facts">
+    <li>O módulo precisa ter lógica de 3,3 V. A maioria já traz os resistores de <i>pull-up</i> do I²C; confira no módulo comprado.</li>
+    <li>Fios de até 20 cm.</li>
+    <li>Quando a IMU real entrar, uma constante no <code>main</code> troca a IMU simulada pela real, e o USB deixa de levar a IMU_SIM.</li>
+  </ul>
+</section>
+
+<section class="ref" id="pinos">
+  <h2>Os pinos da placa do firmware</h2>
+  <div class="tblwrap"><table>
+    <thead><tr><th>GPIO</th><th>Função</th><th>Liga em</th><th>Fase</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">1 e 3</td><td>UART0, o USB</td><td>Notebook. Na fase 2 leva o protocolo; na fase 4, só a IMU_SIM</td><td>2 e 4</td></tr>
+      <tr><td class="mono">16</td><td>RX da UART2</td><td>Pino 32 da Pi (TX), por 1 kΩ</td><td>4</td></tr>
+      <tr><td class="mono">17</td><td>TX da UART2</td><td>Pino 33 da Pi (RX), por 1 kΩ</td><td>4</td></tr>
+      <tr><td class="mono">18</td><td>Pulso do horário, só no build de teste</td><td>Pino 36 da Pi (GPIO16), por 1 kΩ</td><td>4</td></tr>
+      <tr><td class="mono">21</td><td>SDA da IMU</td><td>IMU real</td><td>quando chegar</td></tr>
+      <tr><td class="mono">22</td><td>SCL da IMU</td><td>IMU real</td><td>quando chegar</td></tr>
+      <tr><td class="mono">25</td><td>TX do CAN (TWAI)</td><td>Catodo do D1; TXD do módulo na sessão</td><td>2 em diante</td></tr>
+      <tr><td class="mono">26</td><td>RX do CAN e contador de pulsos</td><td>LINHA; RXD do módulo, pelo divisor, na sessão</td><td>2 em diante</td></tr>
+      <tr><td class="mono">27</td><td>Trava do transceptor</td><td>10 kΩ e LED (folha 3); pino S pelo JP1 na sessão</td><td>2 em diante</td></tr>
+      <tr><td class="mono">34</td><td>Reservado: dado pronto da IMU</td><td>Nada, por enquanto</td><td>—</td></tr>
+      <tr><td class="mono">3V3</td><td>3,3 V</td><td>R1, 10 kΩ do GPIO27, LED; IMU</td><td>2 em diante</td></tr>
+      <tr><td class="mono">5V / VIN</td><td>5 V</td><td>Fio de 5 V da Pi, só sem o USB; com o USB, o VCC do módulo na sessão</td><td>2 (sessão) e 4</td></tr>
+      <tr><td class="mono">GND</td><td>Terra</td><td>Trilho GND da protoboard; pino 34 da Pi</td><td>todas</td></tr>
+    </tbody>
+  </table></div>
+  <p class="prose"><b>Pinos que não servem:</b> 0, 2, 5, 12 e 15 decidem o modo de boot; 6 a 11 são da memória flash; 34 a 39 só servem como entrada. Na placa, os pinos às vezes aparecem como "D25" ou "IO25".</p>
+</section>
+
+<section class="ref" id="pecas">
+  <h2>As peças</h2>
+  <div class="tblwrap"><table>
+    <thead><tr><th class="n">Qtd</th><th>Peça</th><th>Para quê</th><th>Situação</th></tr></thead>
+    <tbody>
+      <tr><td class="n">3 + 1</td><td>Placa ESP32 com módulo WROOM-32</td><td>Firmware, adaptador e gerador, mais uma de reserva</td><td>a conferir</td></tr>
+      <tr><td class="n">3 + 2</td><td>Diodo BAT43 (ou BAT42)</td><td>Um por placa na LINHA</td><td>não estava na compra de 16/10</td></tr>
+      <tr><td class="n">6</td><td>Resistor de 1 kΩ</td><td>R1, LED e os 3 fios de sinal da fase 4</td><td>a conferir</td></tr>
+      <tr><td class="n">1</td><td>Resistor de 10 kΩ</td><td><i>Pull-up</i> do GPIO27</td><td>a conferir</td></tr>
+      <tr><td class="n">1</td><td>LED</td><td>Mostra o transceptor liberado</td><td>a conferir</td></tr>
+      <tr><td class="n">1</td><td>Protoboard de 400 furos</td><td>A LINHA, os diodos e os resistores</td><td>a conferir</td></tr>
+      <tr><td class="n">~20</td><td>Jumpers de 10 cm (macho-fêmea e macho-macho)</td><td>Das placas à protoboard</td><td>a conferir</td></tr>
+      <tr><td class="n">1</td><td>Hub USB de 4 portas</td><td>As três placas, com as portas etiquetadas</td><td>a conferir</td></tr>
+      <tr><td class="n">1</td><td>Fusível rearmável (PTC) de 0,5 A</td><td>No fio de 5 V da Pi, na fase 4</td><td>a conferir</td></tr>
+      <tr><td class="n">3</td><td>Módulo MCP2515 + TJA1050</td><td>Carro, adaptador e reserva; dois vão para a sessão</td><td>comprados, a caminho</td></tr>
+      <tr><td class="n">9</td><td>Resistor de 10 kΩ, para os módulos</td><td>Em cada módulo: TXD, S e a metade de cima do divisor</td><td>a conferir</td></tr>
+      <tr><td class="n">3</td><td>Resistor de 20 kΩ</td><td>A metade de baixo do divisor do RXD</td><td>a conferir</td></tr>
+      <tr><td class="n">2</td><td>Jumper de 2 pinos</td><td>JP1 no firmware e JP2 no adaptador</td><td>a conferir</td></tr>
+      <tr><td class="n">2</td><td>Resistor de 120 Ω</td><td>Só se faltar o J1 do módulo</td><td>a conferir</td></tr>
+      <tr><td class="n">1</td><td>Ferro de solda de ponta fina</td><td>Preparar os módulos</td><td>a comprar</td></tr>
+      <tr><td class="n">1</td><td>Par trançado de ~50 cm</td><td>CANH e CANL na sessão</td><td>a conferir</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section class="ref" id="medir">
+  <h2>Montar e medir</h2>
+  <div class="cols">
+    <div>
+      <h3>Na ordem</h3>
+      <ol class="steps">
+        <li>Monte com tudo desligado e ligue o GND primeiro.</li>
+        <li>Ponha as três placas no mesmo hub. Uma placa só fica na LINHA enquanto estiver alimentada.</li>
+        <li>Antes de tirar o USB de uma placa, tire-a da LINHA.</li>
+        <li>Antes do primeiro teste, meça a LINHA parada com o multímetro: deve dar cerca de 3,3 V.</li>
+      </ol>
+      <h3>Aceite da bancada</h3>
+      <div class="tblwrap"><table>
+        <thead><tr><th>Medida</th><th>Critério</th><th>Com</th></tr></thead>
+        <tbody>
+          <tr><td>LINHA parada</td><td>≈ 3,3 V</td><td>multímetro</td></tr>
+          <tr><td>Nível baixo</td><td>até 0,5 V</td><td>osciloscópio</td></tr>
+          <tr><td>Subida até 2,5 V</td><td>até 300 ns, com as três placas</td><td>osciloscópio</td></tr>
+          <tr><td>30 min a 500 kbit/s</td><td>TEC e REC em 0, sem alerta de erro</td><td>gerador de tráfego</td></tr>
+        </tbody>
+      </table></div>
+      <p>Se a subida passar de 300 ns, o primeiro passo é encurtar os fios.</p>
+    </div>
+    <div>
+      <h3>Onde encostar o osciloscópio</h3>
+      <div class="tblwrap"><table>
+        <thead><tr><th>Sinal</th><th>Onde encostar a ponta</th></tr></thead>
+        <tbody>
+          <tr><td>LINHA</td><td>Trilho LINHA da protoboard</td></tr>
+          <tr><td>TX do CAN</td><td>Coluna do D1, o lado da faixa</td></tr>
+          <tr><td>GPIO27</td><td>Coluna 28, a do GPIO27</td></tr>
+          <tr><td>Terra da ponta</td><td>Trilho GND</td></tr>
+        </tbody>
+      </table></div>
+      <p>As medidas com dois canais juntos (<code>talk()</code>, <code>listen()</code> e a escuta antes de falar) usam o GPIO27 e o TX.</p>
+    </div>
+  </div>
+</section>
+
+<section class="ref" id="aberto">
+  <h2>O que ainda não está definido</h2>
+  <ul class="facts">
+    <li><b>No carro:</b> a tomada OBD, o gabinete, a alimentação e o esquemático são do T19 (Thiago). Já está decidido que vai o mesmo módulo preparado, com o J1 tirado, e que o adaptador serve de testemunha, com o JP2 aberto. Para referência, na tomada OBD-II o CAN fica nos pinos 6 (CANH) e 14 (CANL), o terra nos pinos 4 e 5, e os 12 V da bateria no 16.</li>
+    <li><b>WROOM ou WROVER:</b> a conferir na tampa do módulo das placas. Muda os pinos da UART2 (folha 6).</li>
+    <li><b>Pinos da Pi reservados por outras pessoas:</b> a conferir (folha 5).</li>
+    <li><b>O resto da compra de 16/10</b> (modem A7670E, câmera, LM2596, carregador e o módulo micro SD) não entra nesta fiação. O módulo micro SD ainda não tem lugar no plano do firmware.</li>
+  </ul>
+</section>
+
+<footer>Fontes: docs/BANCADA.md (ticket #11), docs/adr/0010, docs/TESTES.md §10 · gerada por docs/esquematico/gen.py a partir do page.html, em 16/10/2026</footer>
+</div>

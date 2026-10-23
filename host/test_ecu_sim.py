@@ -8,6 +8,7 @@ from car_model import CarModel
 from ecu_sim import EcuSim, Frame
 from test_esp32_decoder import FakeClock, obd, ping_seq, pong, status
 
+# Written here again, apart from ecu_sim.PIDS, so a wrong number there shows (PROTOCOLO.md §3.3)
 PID_NUMBERS = {"load": 0x04, "coolant": 0x05, "map": 0x0B, "rpm": 0x0C, "speed": 0x0D, "iat": 0x0F,
                "throttle": 0x11, "voltage": 0x42}
 # What one step of the raw bytes is worth (PROTOCOLO.md §3.3); the decoder also rounds % to 0.1
@@ -16,7 +17,7 @@ RESOLUTION = {"load": 100 / 255 + 0.1, "coolant": 1, "map": 1, "rpm": 0.25, "spe
 
 
 class StillCar:
-    """A car that holds the OBD values it is given, with its ECUs answering."""
+    """A car that holds the OBD values it is given, with its centrals answering."""
 
     def __init__(self, **values):
         self.values = {"load": 30.0, "coolant": 90.0, "map": 35.0, "rpm": 800.0, "speed": 60.0,
@@ -48,7 +49,7 @@ class Answers(unittest.TestCase):
         self.assertEqual(answers[0x20][0][1], Frame(0x7E8, bytes.fromhex("06 41 20 00 00 00 01 AA")))
         self.assertEqual(answers[0x40][0][1], Frame(0x7E8, bytes.fromhex("06 41 40 40 00 00 00 AA")))
 
-    def test_a_request_to_0x7e0_plus_n_goes_only_to_ecu_n(self):
+    def test_a_request_to_0x7e0_plus_n_goes_only_to_central_n(self):
         ecu = EcuSim(StillCar(), rng=random.Random(1))
         self.assertEqual([frame.id for _, frame in ecu.receive(request(0x0C, to=0x7E0), 0.0)], [0x7E8])
         self.assertEqual(ecu.receive(request(0x0C, to=0x7E1), 0.0), [])
@@ -84,7 +85,7 @@ class DelayAndLoss(unittest.TestCase):
 
     def test_the_same_seed_gives_the_same_answers(self):
         def run(seed):
-            ecu = EcuSim(StillCar(), rng=random.Random(seed), two_ecus=True)
+            ecu = EcuSim(StillCar(), rng=random.Random(seed), two_centrals=True)
             ecu.loss = 0.3
             return [ecu.receive(request(pid), 0.0) for pid in (0x00, 0x0C, 0x0D) * 50]
         self.assertEqual(run(7), run(7))
@@ -92,7 +93,7 @@ class DelayAndLoss(unittest.TestCase):
 
 
 class Ignition(unittest.TestCase):
-    """With the real car model: ignition off mutes the ECUs, and so does the start for 0.5 s."""
+    """With the real car model: ignition off mutes the centrals, and so does the start for 0.5 s."""
 
     def setUp(self):
         self.car = CarModel(noise=False)
@@ -105,10 +106,10 @@ class Ignition(unittest.TestCase):
         for _ in range(round(seconds * 100)):
             self.car.step(0.01)
 
-    def test_ignition_off_mutes_every_ecu(self):
+    def test_ignition_off_mutes_every_central(self):
         self.car.ignition = False
         self.assertEqual(self.answers(), [])
-        self.assertEqual(EcuSim(self.car, two_ecus=True).receive(request(0x00), 0.0), [])
+        self.assertEqual(EcuSim(self.car, two_centrals=True).receive(request(0x00), 0.0), [])
 
     def test_the_start_mutes_them_for_half_a_second_then_rpm_is_250(self):
         self.car.ignition = False
@@ -191,11 +192,11 @@ class ClosedList(unittest.TestCase):
         self.assertEqual(self.ecu.outside_list, 0)
 
 
-class TwoEcus(unittest.TestCase):
+class TwoCentrals(unittest.TestCase):
     """The engine at 0x7E8 has all but speed; the gearbox at 0x7E9 has only speed and rpm (SIMULADOR.md §8)."""
 
     def setUp(self):
-        self.ecu = EcuSim(StillCar(), rng=random.Random(1), two_ecus=True)
+        self.ecu = EcuSim(StillCar(), rng=random.Random(1), two_centrals=True)
 
     def frames(self, pid, to=0x7DF):
         return [frame for _, frame in self.ecu.receive(request(pid, to), 0.0)]
@@ -249,6 +250,33 @@ class RoundTrip(unittest.TestCase):
                     [(_, _, sample)] = self.decoder.feed(obd([(PID_NUMBERS[name], 0, raw.hex())], seq=seq))
                     self.assertAlmostEqual(sample[name], value, delta=RESOLUTION[name] / 2)
                     seq += 1
+
+    def test_the_car_models_own_values_come_back_through_a_drive(self):
+        car = CarModel(random.Random(4))
+        ecu = EcuSim(car, rng=random.Random(4))
+        self.assertEqual(set(car.obd()), set(PID_NUMBERS))
+        # idle, full throttle up to speed, a hard brake, then the engine off and a new start
+        phases = ((0.0, 0.0, 5), (1.0, 0.0, 40), (0.0, 1.0, 6), ("off", 0.0, 3), ("start", 0.0, 3))
+        seq = 1
+        for throttle, brake, seconds in phases:
+            if throttle == "off":
+                car.ignition, throttle = False, 0.0
+            elif throttle == "start":
+                car.ignition, throttle = True, 0.0
+                car.start()
+            car.throttle, car.brake = throttle, brake
+            for tick in range(seconds * 100):
+                car.step(0.01)
+                if tick % 50 or not car.ecus_answer:
+                    continue
+                values = car.obd()
+                for name, number in PID_NUMBERS.items():
+                    with self.subTest(name=name, value=values[name]):
+                        [(_, frame)] = ecu.receive(request(number), 0.0)
+                        raw = frame.data[3:1 + frame.data[0]]
+                        [(_, _, sample)] = self.decoder.feed(obd([(number, 0, raw.hex())], seq=seq))
+                        self.assertAlmostEqual(sample[name], values[name], delta=RESOLUTION[name] / 2)
+                        seq = (seq + 1) & 0xFFFF
 
 
 if __name__ == "__main__":

@@ -61,6 +61,7 @@ A ECU simulada não espera o tique: cada requisição lida do socket ganha uma r
 *Emenda do #24 (23/10/2026).* O que os documentos deixavam em aberto na ECU simulada (`host/ecu_sim.py`):
 - **Preenchimento.** A resposta ocupa os 8 bytes e completa com `0xAA`, não com `0x00`, para que um firmware que leia além do tamanho apareça nos testes.
 - **Mapas de suporte em cadeia.** Uma central só responde a 01 20 se o seu 01 00 anunciou o `0x20`, e só a 01 40 se o 01 20 anunciou o `0x40`. Assim, com `voltage` ausente, a central deixa de anunciar e de responder o 01 20 e o 01 40. Com duas centrais, a `0x7E9` só responde ao 01 00.
+- **Fora da faixa.** Um valor que não cabe nos bytes do PID satura no limite (0 a 255, ou 0 a 65 535 em 256A + B), sem aviso. O modelo do carro não sai dessas faixas, e o teste de ida e volta percorre uma corrida com ele.
 - **Perdas** são sorteadas por resposta: com duas centrais, cada uma perde a sua à parte.
 - **Atraso** de 15 ms com ±4 ms sorteados por resposta, nunca antes da requisição, mesmo com o atraso em 0.
 - **Ignição.** A ECU olha o modelo do carro no instante da requisição. Uma requisição feita com as centrais mudas fica sem resposta, mesmo que elas voltem antes do atraso.

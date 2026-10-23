@@ -55,8 +55,9 @@ COURSE_BRAKE = 0.4
 COURSE_STOPPED_BRAKE = 0.3
 
 # The PIDs the fake car has, with the ECU simulada's inverse formulas (ADR-0006), and how
-# often the firmware asks for each (MAQUINAS-DE-ESTADO.md §2.4)
-_PIDS = {pid: (name, 200_000 if name in ("rpm", "speed") else 1_000_000, to_raw)
+# often the firmware asks for each: rpm and speed every 200 ms, the rest every 1 s (MAQUINAS-DE-ESTADO.md §2.4)
+_FAST_PIDS = ("rpm", "speed")
+_PIDS = {pid: (name, 200_000 if name in _FAST_PIDS else 1_000_000, to_raw)
          for pid, (name, to_raw) in PIDS.items()}
 _PIDS_ANNOUNCED = (*_PIDS, 0x20, 0x40)  # 0x20 and 0x40 tell the firmware to ask 01 20 and 01 40
 

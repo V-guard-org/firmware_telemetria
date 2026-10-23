@@ -22,6 +22,11 @@ public:
     bool on_deadline(uint64_t now_us, ImuSampleBody& sample);
     uint64_t next_deadline_us() const;
 
+    // A taxa nova vale a partir da próxima leitura (PROTOCOLO.md §4.2): ela fecha a amostra em
+    // curso se esta já tiver as leituras que a taxa nova pede.
+    void set_rate(uint8_t rate) { rate_ = rate; }
+    uint8_t rate() const { return rate_; }
+
     bool failed() const { return failed_; }
     uint32_t failures() const { return failures_; }  // falhas_imu
 

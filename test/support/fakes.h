@@ -113,6 +113,24 @@ private:
     size_t next_ = 0;
 };
 
+// Quem se registra para uma mensagem de desenvolvimento, como a IMU simulada para a 0x83.
+// Guarda o corpo e o instante de cada mensagem entregue.
+class FakeDevHandler : public DevMessageHandler {
+public:
+    struct Delivered {
+        std::vector<uint8_t> body;
+        uint64_t t_us;
+    };
+
+    bool on_dev_message(const uint8_t* body, size_t len, uint64_t t_us) override {
+        delivered.push_back({std::vector<uint8_t>(body, body + len), t_us});
+        return accepts;
+    }
+
+    bool accepts = true;  // false: o corpo não serve, e a mensagem soma em rejeitadas
+    std::vector<Delivered> delivered;
+};
+
 class FakeSystem : public SystemPort {
 public:
     uint32_t heap_min() const override { return min_free_heap; }

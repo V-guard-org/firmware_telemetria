@@ -21,6 +21,7 @@ import time
 import tty
 
 from car_model import CarModel
+from ecu_sim import PIDS
 from esp32_decoder import (IMU, LOG, OBD, PING, PONG, STATUS, TAXAS, VERSION, cobs_decode, crc16,
                            encode_message)
 
@@ -53,18 +54,11 @@ COURSE_HOLD_THROTTLE = 0.13     # about what holds the car at 60 km/h
 COURSE_BRAKE = 0.4
 COURSE_STOPPED_BRAKE = 0.3
 
-# The PIDs the fake car has, how often the firmware asks for each (MAQUINAS-DE-ESTADO.md §2.4),
-# and the inverse of the formulas of PROTOCOLO.md §3.3, written apart from the decoder (ADR-0006)
-_PIDS = {
-    0x04: ("load", 1_000_000, lambda value: [round(value * 255 / 100)]),
-    0x05: ("coolant", 1_000_000, lambda value: [round(value) + 40]),
-    0x0B: ("map", 1_000_000, lambda value: [round(value)]),
-    0x0C: ("rpm", 200_000, lambda value: divmod(round(value * 4), 256)),
-    0x0D: ("speed", 200_000, lambda value: [round(value)]),
-    0x0F: ("iat", 1_000_000, lambda value: [round(value) + 40]),
-    0x11: ("throttle", 1_000_000, lambda value: [round(value * 255 / 100)]),
-    0x42: ("voltage", 1_000_000, lambda value: divmod(round(value * 1000), 256)),
-}
+# The PIDs the fake car has, with the ECU simulada's inverse formulas (ADR-0006), and how
+# often the firmware asks for each: rpm and speed every 200 ms, the rest every 1 s (MAQUINAS-DE-ESTADO.md §2.4)
+_FAST_PIDS = ("rpm", "speed")
+_PIDS = {pid: (name, 200_000 if name in _FAST_PIDS else 1_000_000, to_raw)
+         for pid, (name, to_raw) in PIDS.items()}
 _PIDS_ANNOUNCED = (*_PIDS, 0x20, 0x40)  # 0x20 and 0x40 tell the firmware to ask 01 20 and 01 40
 
 # The messages, laid out here apart from the decoder (PROTOCOLO.md §3)

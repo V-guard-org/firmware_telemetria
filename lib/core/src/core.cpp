@@ -31,11 +31,11 @@ bool one_of(uint8_t value, const uint8_t (&accepted)[N]) {
 
 Core::Core(CanPort& can, LinkPort& link, ImuPort& imu, SystemPort& system, const BootInfo& boot)
     : gate_(can, *this),
+      obd_(gate_, kDefaultObdRate),
       link_(link),
       imu_(imu),
       system_(system),
       imu_machine_(imu, kDefaultImuRate),
-      obd_rate_(kDefaultObdRate),
       boot_(boot.boot),
       reset_reason_(boot.reset_reason),
       platform_(boot.platform) {
@@ -54,9 +54,17 @@ void Core::start(uint64_t now_us) {
     flush(now_us);
 }
 
-// O OBD chega no ticket "OBD no vcan0: o caminho feliz" (#25).
-void Core::on_can_frame(const CanFrame&, uint64_t t_us) { now_us_ = t_us; }
-void Core::on_can_tx_result(TxResult, uint64_t t_us) { now_us_ = t_us; }
+void Core::on_can_frame(const CanFrame& frame, uint64_t t_us) {
+    now_us_ = t_us;
+    obd_.on_frame(frame, t_us);
+}
+
+void Core::on_can_tx_result(TxResult result, uint64_t t_us) {
+    now_us_ = t_us;
+    obd_.on_tx_result(result, t_us);
+}
+
+// O estado do barramento chega com as falhas do CAN (#26).
 void Core::on_can_bus_state(BusState, uint64_t t_us) { now_us_ = t_us; }
 
 // A UART0 da fase 4, com a IMU simulada e a Pi nos fios (PLATAFORMA.md §5). Remonta como a
@@ -107,10 +115,11 @@ void Core::on_link_message(const Message& msg, uint64_t t_us) {
         case MessageType::kPing: {
             uint8_t body[kMaxBody];
             send(MessageType::kPong, body, build_pong_body(msg.seq, t_us, body));
+            obd_.on_ping(t_us);
             break;
         }
         case MessageType::kTaxas:
-            apply_taxas(msg);
+            apply_taxas(msg, t_us);
             break;
         default:
             if (!deliver_dev_message(msg, t_us)) {
@@ -123,7 +132,7 @@ void Core::on_link_message(const Message& msg, uint64_t t_us) {
 // Cada campo vale sozinho: um valor fora da lista deixa o seu campo como estava e soma 1 em
 // rejeitadas (PROTOCOLO.md §4.2). Um corpo curto soma 1; bytes além dos dois campos são
 // ignorados, como o corpo de um PING.
-void Core::apply_taxas(const Message& msg) {
+void Core::apply_taxas(const Message& msg, uint64_t t_us) {
     if (msg.body_len < 2) {
         ++counters_[kRejected];
         return;
@@ -136,7 +145,7 @@ void Core::apply_taxas(const Message& msg) {
         ++counters_[kRejected];
     }
     if (one_of(obd, kObdRates)) {
-        obd_rate_ = obd;
+        obd_.set_rate(obd, t_us);
     } else {
         ++counters_[kRejected];
     }
@@ -168,6 +177,11 @@ void Core::on_deadline(uint64_t now_us) {
         uint8_t body[kMaxBody];
         send(MessageType::kImu, body, build_imu_body(sample, body));
     }
+    ObdSample obd;
+    if (obd_.on_deadline(now_us, obd)) {
+        uint8_t body[kMaxBody];
+        send(MessageType::kObd, body, build_obd_body(obd.t_us, obd.values, obd.n, body));
+    }
     if (now_us >= next_status_us_) {
         send_status(now_us);
         // Mantém o ritmo de 1 s; depois de um atraso maior que 1 s, recomeça a partir de agora.
@@ -182,7 +196,9 @@ void Core::on_deadline(uint64_t now_us) {
 uint64_t Core::next_deadline_us() const {
     const uint64_t next = next_status_us_ < retry_write_us_ ? next_status_us_ : retry_write_us_;
     const uint64_t imu = imu_machine_.next_deadline_us();
-    return imu < next ? imu : next;
+    const uint64_t obd = obd_.next_deadline_us();
+    const uint64_t machines = imu < obd ? imu : obd;
+    return machines < next ? machines : next;
 }
 
 void Core::send_status(uint64_t t_us) {
@@ -192,9 +208,14 @@ void Core::send_status(uint64_t t_us) {
     status.sources = imu_.simulated() ? kSourceImuSimulated : 0;
     status.reset_reason = reset_reason_;
     status.imu_rate = imu_machine_.rate();
-    status.obd_rate = obd_rate_;
+    status.obd_rate = obd_.rate();
     status.imu_state = imu_machine_.failed() ? 1 : 0;
+    status.obd_state = static_cast<uint8_t>(obd_.state());
+    std::memcpy(status.pids, obd_.pids(), sizeof(status.pids));
     counters_[kImuFailures] = imu_machine_.failures();
+    counters_[kObdSent] = obd_.sent();
+    counters_[kObdAnswered] = obd_.answered();
+    counters_[kObdTimeouts] = obd_.timeouts();
     for (size_t i = 0; i < kCounterCount; ++i) {
         status.counters[i] = counters_[i];
     }
@@ -229,8 +250,9 @@ bool Core::take_log_slot(uint64_t t_us) {
 }
 
 // Um quadro fora da lista fechada, ou fora da liberação, que o portão barrou: só por defeito
-// no código (PLATAFORMA.md §3.2). Com o OBD (#25), ele também vai a BLOQUEADO.
+// no código (PLATAFORMA.md §3.2). O OBD vai a BLOQUEADO, e sai um LOG de erro.
 void Core::on_frame_blocked(const CanFrame& frame, bool released) {
+    obd_.lock();
     // No máximo cerca de 105 bytes, sempre abaixo dos 200 do LOG.
     char text[kMaxLogText + 1];
     size_t len = static_cast<size_t>(std::snprintf(

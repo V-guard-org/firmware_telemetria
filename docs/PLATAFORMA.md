@@ -159,7 +159,7 @@ Se uma das duas falhar, o que só acontece por defeito no código:
 O teste automático da lista fechada roda no portão. A plataforma não confere de novo.
 
 *Emenda do #23 (15/10/2026):*
-- **Quem conta e quem avisa.** O portão conta os quadros barrados, e o STATUS mostra essa conta em `bloqueadas`. A cada quadro barrado, ele avisa o núcleo, com o quadro e com a indicação de se o transceptor estava liberado. O núcleo manda o LOG de erro, com o ID, o DLC e os bytes do quadro. Com o OBD (#25), o núcleo também o leva a BLOQUEADO.
+- **Quem conta e quem avisa.** O portão conta os quadros barrados, e o STATUS mostra essa conta em `bloqueadas`. A cada quadro barrado, ele avisa o núcleo, com o quadro e com a indicação de se o transceptor estava liberado. O núcleo manda o LOG de erro, com o ID, o DLC e os bytes do quadro, e leva o OBD a BLOQUEADO (#25).
 - **No boot, o transceptor está silencioso:** até o 1º `talk()`, todo quadro é barrado.
 - **O caminho do LOG.** O núcleo ganhou o corpo do LOG ([`PROTOCOLO.md` §3.5](PROTOCOLO.md)) e já manda como LOG os avisos e os erros da plataforma (`on_platform_log`). O limite de 10 por segundo e os avisos do próprio núcleo continuam no #22.
 
@@ -229,11 +229,17 @@ Com uma fila só, os eventos chegam ao núcleo na ordem em que aconteceram, e os
 ### 4.2 Notebook
 
 - **Laço.** Uma única thread faz `poll()` no socket do `vcan0` e no pty, com o próximo prazo do núcleo como limite de espera.
-- **Partida.** `program --can vcan0`. O firmware cria o pty e um atalho de caminho fixo, `/tmp/vguard-esp32`, que o decodificador e o simulador abrem. A opção `--path` troca o caminho do atalho, como no ESP32 falso; o teste de ponta a ponta a usa para não disputar o atalho com um simulador aberto. Até a porta CAN do notebook chegar (#25), o `--can` é aceito e ignorado, com um aviso no terminal. Na fase 2, os mesmos programas abrem a `/dev/vguard-esp32` no lugar dele ([`BANCADA.md` §5](BANCADA.md)). O simulador do PC pode iniciar o firmware como processo filho, para reiniciá-lo por um botão ([`SIMULADOR.md` §4](SIMULADOR.md)).
+- **Partida.** `program --can vcan0`. O firmware cria o pty e um atalho de caminho fixo, `/tmp/vguard-esp32`, que o decodificador e o simulador abrem. A opção `--path` troca o caminho do atalho, como no ESP32 falso; o teste de ponta a ponta a usa para não disputar o atalho com um simulador aberto. Na fase 2, os mesmos programas abrem a `/dev/vguard-esp32` no lugar dele ([`BANCADA.md` §5](BANCADA.md)). O simulador do PC pode iniciar o firmware como processo filho, para reiniciá-lo por um botão ([`SIMULADOR.md` §4](SIMULADOR.md)).
 - **`BootInfo`.** O `boot` é sorteado, o motivo de reinício é 1 (energia) e a `plataforma` é 0.
 - **Logs.** Saem também no terminal.
 - **Sem leitor.** O firmware fica com o seu lado do pty aberto, para que o `poll()` não acorde sem parar quando ninguém lê. O pty guarda cerca de 17 KB, o adaptador guarda mais 4 KB, e depois disso a fila do núcleo descarta (§3.3). *Medido no #22, no kernel 7.0:* o pty guardou cerca de 20 KB, ou 24 KB com o adaptador. Sem leitor, isso enche em cerca de 6 s a 100 amostras/s e em 11 s a 50/s.
 - **Sem watchdog.**
+- *Emenda do #25 (23/10/2026).* A porta CAN do notebook (`src/native/socket_can.cpp`):
+  - **`--can CANAL`** abre o SocketCAN no canal. Se o canal não existe, o firmware termina com código 1 e diz o motivo no terminal.
+  - **Sem `--can`,** não há porta CAN: nada sai nem chega, e o OBD descobre sem resposta, como com o carro desligado. É o que usam os testes que rodam sem o `vcan0`, que pede sudo.
+  - **Escuta.** Sem filtro, o socket recebe tudo, e os quadros só são contados. Com o `talk()`, o `CAN_RAW_FILTER` deixa passar só os quadros de dados de 11 bits de `0x7E8` a `0x7EF`, que vão ao núcleo.
+  - **Resultado da transmissão.** Um `write()` que falha, por exemplo com o canal desligado, volta como erro de barramento, com o motivo no terminal. O resultado espera no adaptador, e o `ppoll()` não dorme enquanto ele não sai.
+  - **Leitura.** Até 64 quadros por volta do laço, para o pty e os prazos não esperarem uma rajada inteira.
 - **Versão do firmware.** É a de `[firmware] version` no `platformio.ini`, seguida do commit e de `-dirty` se há mudanças sem commit, por exemplo `0.1.0-a58af37`. O script `firmware_version.py` a monta a cada build.
 
 ### 4.3 Testes

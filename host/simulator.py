@@ -2,10 +2,12 @@
 
     python3 host/simulator.py --firmware .pio/build/native/program --sem-tela
                               [--roteiro host/roteiros/ARQUIVO.txt] [--duracao 30min] [--porta CAMINHO]
+                              [--can vcan0 | --sem-can]
 
-One process, one thread: select() on the firmware's port with a 10 ms tick (§2). The port is
-opened once, and the IMU_SIM and the Decoder share it, as it has a single reader. Headless
-only for now: the screen comes with #27, and the ECU simulada with #25.
+One process, one thread: select() on the firmware's port and on the CAN socket, with a 10 ms
+tick and each answer of the ECU simulada at its own instant (§2). The port is opened once, and
+the IMU_SIM and the Decoder share it, as it has a single reader. Headless only for now: the
+screen comes with #27.
 """
 
 import argparse
@@ -14,8 +16,10 @@ import json
 import logging
 import os
 import re
+import heapq
 import select
 import signal
+import socket
 import struct
 import subprocess
 import sys
@@ -24,9 +28,11 @@ import time
 import tty
 
 from car_model import CarModel
+from ecu_sim import PID_NAMES, EcuSim, Frame
 from esp32_decoder import PING, Decoder, cobs_decode, encode_message
 
 DEFAULT_PORT = "/tmp/vguard-esp32"
+DEFAULT_CAN = "vcan0"
 TICKS_PER_S = 100               # the IMU_SIM goes once per tick (PROTOCOLO.md §4.3)
 TICK_S = 1 / TICKS_PER_S
 MAX_LAG_S = 1.0                 # further behind than this (a stalled notebook), jump instead of catching up
@@ -37,6 +43,11 @@ FIRMWARE_STOP_S = 2.0           # before it gets a SIGKILL
 IMU_SIM = 0x83
 _IMU_SIM = struct.Struct("<6hB")    # ax ay az, gx gy gz, falha (PROTOCOLO.md §4.3)
 _IMU_SCALES = (100, 100, 100, 10, 10, 10)   # 0.01 m/s² and 0.1 °/s
+
+# struct can_frame of SocketCAN: the ID with its flags, the length, 3 bytes and 8 of data
+_CAN_FRAME = struct.Struct("=IB3x8s")
+_CAN_EFF_FLAG, _CAN_RTR_FLAG = 0x80000000, 0x40000000
+_CAN_EFF_MASK, _CAN_SFF_MASK = 0x1FFFFFFF, 0x7FF
 
 Action = collections.namedtuple("Action", "at_s line text command")
 Roteiro = collections.namedtuple("Roteiro", "actions end_s")
@@ -108,6 +119,8 @@ _COMMANDS = (
     (r"confere taxas imu (\d+) obd (\d+)", lambda imu, obd: Command("check_rates", _rates(imu, obd))),
     (r"confere vazias (\S+) (\d+)", lambda source, count: Command(
         "check_empty", (_one_of("confere vazias", source, SOURCES), int(count)))),
+    (r"confere pid (\S+) (presente|ausente)", lambda name, presence: Command(
+        "check_pid", (_one_of("confere pid", name, sorted(PID_NAMES)), presence))),
     (r"fim", lambda: Command("end", ())),
 )
 
@@ -169,17 +182,23 @@ class Simulator:
     "reinicia esp32" can stop it and start it again.
     """
 
-    def __init__(self, port=DEFAULT_PORT, firmware=None, roteiro=None, duration_s=None):
+    def __init__(self, port=DEFAULT_PORT, firmware=None, roteiro=None, duration_s=None, can=DEFAULT_CAN):
         self.car = CarModel()
+        self.ecu = EcuSim(self.car)
         self.decoder = Decoder()
         self.samples = dict.fromkeys(SOURCES, 0)
         self.empty = dict.fromkeys(SOURCES, 0)     # the {} of each source since the start
         self.last_samples = dict.fromkeys(SOURCES)  # the last one with values, as update() gets it
+        self._last_obd = None           # the last OBD sample, {} included, for confere pid
         self.checks_passed = 0
         self.failed_checks = []
         self.error = None
         self._port = port
         self._firmware = firmware
+        self._can = can                 # None: no CAN (--sem-can), and the firmware gets no --can
+        self._can_socket = None
+        self._answers = []              # heap of (instant, n, Frame): the ECU simulada's, not yet sent
+        self._answer_count = 0
         self._child = None
         self._fd = None
         self._actions = list(roteiro.actions) if roteiro else []
@@ -201,6 +220,8 @@ class Simulator:
         for name in ("esp32", "esp32_decoder"):
             logging.getLogger(name).addHandler(handler)
         try:
+            if self._can:
+                self._open_can()
             if self._firmware:
                 self._start_firmware()
             self._open_port()
@@ -216,6 +237,8 @@ class Simulator:
         finally:
             self._close_port()
             self._stop_firmware()
+            if self._can_socket is not None:
+                self._can_socket.close()
             for name in ("esp32", "esp32_decoder"):
                 logging.getLogger(name).removeHandler(handler)
         return not self.failed_checks and self.error is None
@@ -279,7 +302,10 @@ class Simulator:
             "samples": dict(self.samples),
             "empty": dict(self.empty),
             "last_samples": dict(self.last_samples),
+            "car_obd": self.car.obd(),  # the model's values at the end, to set against last_samples
             "boots": stats["counters"]["boots"],
+            # fora_da_lista: frames the ECU simulada saw outside the closed list, 0 in every run (TESTES.md §5)
+            "outside_list": self.ecu.outside_list if self._can else None,
             "checks": {"passed": self.checks_passed, "failed": list(self.failed_checks)},
             "error": self.error,
             "decoder": stats,
@@ -290,19 +316,29 @@ class Simulator:
         start = time.monotonic()
         while not self._ended and not self._stopping:
             due = start + self._tick_count * TICK_S
+            wake = min(due, self._answers[0][0]) if self._answers else due
             # A stuck Pi leaves the bytes in the port, which fills, as the Pi's UART would.
             reading = [] if self._pi_stuck else [self._fd]
-            ready, _, _ = select.select(reading, [], [], max(0.0, due - time.monotonic()))
-            if ready:
-                # Fed as soon as read: the PONG's arrival is the read, not the next tick.
-                self._exchange(self._read())
+            if self._can_socket is not None:
+                reading.append(self._can_socket)
+            ready, _, _ = select.select(reading, [], [], max(0.0, wake - time.monotonic()))
             now = time.monotonic()
+            # The tick first, so that the roteiro's 0:00 actions, such as "pi ping desliga",
+            # come before the decoder answers the boot's STATUS with its 1st PING.
             if now >= due:
                 if now - due > MAX_LAG_S:
                     self._tick_count = int((now - start) * TICKS_PER_S)
                 self._tick()
                 if not self._ended:
                     self._tick_count += 1
+            if self._ended:
+                break
+            if self._can_socket in ready:
+                self._receive_can()
+            if self._fd in ready:
+                # Fed as soon as read: the PONG's arrival is the read, not the next tick.
+                self._exchange(self._read())
+            self._send_answers()
 
     def _tick(self):
         """Actions, car, IMU_SIM, feed() and data_to_send(), in the order of SIMULADOR.md §2."""
@@ -328,6 +364,8 @@ class Simulator:
     def _exchange(self, data):
         """The Pi's part: the bytes read go to feed(), and what data_to_send() returns goes out."""
         for source, _ts, values in self.decoder.feed(data):
+            if source == "obd":
+                self._last_obd = values
             if values:
                 self.samples[source] += 1
                 self.last_samples[source] = values
@@ -358,6 +396,11 @@ class Simulator:
         if name == "check_empty":
             source, count = args
             return str(count), str(self.empty[source])
+        if name == "check_pid":
+            pid, expected = args
+            if self._last_obd is None:
+                return expected, "nenhuma amostra OBD"
+            return expected, "presente" if pid in self._last_obd else "ausente"
         esp32 = stats["esp32"]
         if name == "check_rates":
             seen = "nenhum STATUS" if esp32 is None else f"imu {esp32['imu_rate']} obd {esp32['obd_rate']}"
@@ -370,7 +413,8 @@ class Simulator:
         if os.path.islink(self._port):
             os.unlink(self._port)       # left by a firmware that did not stop cleanly
         # A session of its own: a Ctrl+C stops the simulator, and the simulator stops the firmware.
-        self._child = subprocess.Popen([self._firmware, "--path", self._port], start_new_session=True)
+        command = [self._firmware, "--path", self._port] + (["--can", self._can] if self._can else [])
+        self._child = subprocess.Popen(command, start_new_session=True)
         deadline = time.monotonic() + FIRMWARE_START_S
         while not os.path.exists(self._port):
             if self._child.poll() is not None or time.monotonic() > deadline:
@@ -410,6 +454,45 @@ class Simulator:
         attrs[4] = attrs[5] = termios.B460800
         termios.tcsetattr(fd, termios.TCSANOW, attrs)
         self._fd = fd
+
+    def _open_can(self):
+        """The ECU simulada's side of the bus: every frame the firmware puts on it, unfiltered."""
+        try:
+            sock = socket.socket(socket.AF_CAN, socket.SOCK_RAW, socket.CAN_RAW)
+            sock.bind((self._can,))
+        except OSError as error:
+            raise SimulatorError(f"não abriu o CAN {self._can}: {error.strerror} "
+                                 "(o README diz como criar o vcan0; sem ele, use --sem-can)") from None
+        sock.setblocking(False)
+        self._can_socket = sock
+
+    def _receive_can(self):
+        """Each request read goes to the ECU simulada, and its answers wait for their instant."""
+        while True:
+            try:
+                raw = self._can_socket.recv(_CAN_FRAME.size)
+            except BlockingIOError:
+                return
+            except OSError as error:
+                raise SimulatorError(f"o CAN {self._can} falhou: {error.strerror}") from None
+            can_id, length, data = _CAN_FRAME.unpack(raw)
+            extended = bool(can_id & _CAN_EFF_FLAG)
+            frame = Frame(can_id & (_CAN_EFF_MASK if extended else _CAN_SFF_MASK), data[:length],
+                          extended, bool(can_id & _CAN_RTR_FLAG))
+            for at, answer in self.ecu.receive(frame, time.monotonic()):
+                heapq.heappush(self._answers, (at, self._answer_count, answer))
+                self._answer_count += 1
+
+    def _send_answers(self):
+        now = time.monotonic()
+        while self._answers and self._answers[0][0] <= now:
+            _at, _n, frame = heapq.heappop(self._answers)
+            try:
+                self._can_socket.send(_CAN_FRAME.pack(frame.id, len(frame.data), frame.data))
+            except BlockingIOError:
+                pass                    # a full socket loses the answer, as a busy bus would delay it
+            except OSError as error:
+                raise SimulatorError(f"o CAN {self._can} falhou: {error.strerror}") from None
 
     def _close_port(self):
         if self._fd is not None:
@@ -494,6 +577,7 @@ def print_summary(summary):
              f"amostras: imu {summary['samples']['imu']}, obd {summary['samples']['obd']}; "
              f"vazias: imu {summary['empty']['imu']}, obd {summary['empty']['obd']}",
              f"boots vistos: {summary['boots']}",
+             "fora_da_lista: " + ("sem CAN" if summary["outside_list"] is None else str(summary["outside_list"])),
              f"confere: {checks['passed']} certos, {len(checks['failed'])} falharam"]
     lines += [f"  linha {failed['line']}: {failed['command']}: esperado {failed['expected']}, "
               f"visto {failed['seen']}" for failed in checks["failed"]]
@@ -520,6 +604,11 @@ def main(argv=None):
                                                  "(docs/SIMULADOR.md).")
     parser.add_argument("--porta", default=DEFAULT_PORT, metavar="CAMINHO",
                         help=f"a porta do firmware (padrão {DEFAULT_PORT})")
+    can = parser.add_mutually_exclusive_group()
+    can.add_argument("--can", default=DEFAULT_CAN, metavar="CANAL",
+                     help=f"o canal da ECU simulada (padrão {DEFAULT_CAN}); na fase 2, can0")
+    can.add_argument("--sem-can", action="store_true",
+                     help="sem CAN nem ECU simulada; o firmware nativo roda sem --can")
     parser.add_argument("--firmware", metavar="CAMINHO",
                         help="fase 1: inicia o firmware nativo como processo filho, o que permite "
                              "reinicia esp32")
@@ -541,7 +630,7 @@ def main(argv=None):
         if args.firmware is None and any(action.command.name == "restart" for action in roteiro.actions):
             parser.error("o roteiro usa reinicia esp32, que precisa de --firmware")
 
-    simulator = Simulator(args.porta, args.firmware, roteiro, args.duracao)
+    simulator = Simulator(args.porta, args.firmware, roteiro, args.duracao, None if args.sem_can else args.can)
     # A flag, not an exception: a 2nd Ctrl+C never cuts the firmware's stop short.
     for signum in (signal.SIGINT, signal.SIGTERM):
         signal.signal(signum, lambda *_: simulator.stop())

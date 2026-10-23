@@ -11,7 +11,7 @@
 namespace vguard {
 
 // Quem o portão avisa a cada quadro barrado, o que só acontece por defeito no código: o
-// núcleo, que manda o LOG de erro e, com o OBD (#25), o leva a BLOQUEADO. released diz se o
+// núcleo, que manda o LOG de erro e leva o OBD a BLOQUEADO. released diz se o
 // transceptor estava liberado; se não estava, o quadro pode até ser da lista.
 class GateListener {
 public:

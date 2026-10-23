@@ -142,6 +142,18 @@ O driver informa por que um quadro falhou:
 - **Falha.** Os estados *error passive* ou *bus-off* (`on_state_change`) levam a FALHA_CAN.
 - **Amostras OBD.** Saem na taxa de envio do OBD, independentes da agenda, com os valores que existirem naquele instante.
 
+*Emenda do #25 (23/10/2026).* O que o documento deixava em aberto no caminho feliz (`lib/obd/obd_machine.cpp`):
+- **No boot,** o OBD não chama a porta CAN: a plataforma já a abre silenciosa. O `listen()` da escuta sai no 1º PING.
+- **Descoberta.** Cada mapa espera os 50 ms inteiros, para recolher as respostas de todas as centrais. Um mapa conta em `obd_respondidas` se pelo menos uma central respondeu, e em `obd_sem_resposta` se nenhuma respondeu.
+- **`obd_enviadas`** soma quando o resultado da transmissão volta ok. Os outros resultados chegam com o #26.
+- **Agenda.** Cada PID vence de novo um período depois da sua última pergunta. O mais atrasado é o que venceu primeiro; no empate, sai o de menor número. Ao entrar em LENDO, todos vencem juntos e saem em ordem crescente, um a cada 50 ms. Com uma central que responde em 5 ms, o regime fica em cerca de 16 requisições/s.
+- **Resposta.** Vale só um quadro único (o nibble alto do byte 0 é 0), de `0x7E8` a `0x7EF`, com pelo menos os bytes que a fórmula usa (2 para `0x0C` e `0x42`, 1 para os outros). Os bytes crus guardados são todos os de dados da resposta, até 4.
+- **Resposta atrasada.** O valor vale, mas a requisição já contou em `obd_sem_resposta`, e não conta de novo em `obd_respondidas`.
+- **Amostras** saem nos múltiplos do período desde o boot: a 5/s, em 0,2 s, 0,4 s, … Assim, a 1ª sai até 200 ms depois do 1º valor, em cerca de 1,2 s depois do 1º PING. Em LENDO, enquanto nenhum PID respondeu, não sai amostra, porque o decodificador não entregaria nada. Uma taxa nova leva a próxima amostra ao próximo múltiplo do período novo.
+- **Requisição.** Os bytes 3 a 7 vão em `0x00`.
+- **Até o #26:** sem resposta ao 01 00, o OBD entra em SEM_RESPOSTA e fica lá; uma escuta reprovada leva a VELOCIDADE_ERRADA ou LINHA_PRESA, sem transmitir, e fica lá; a presença da Pi ainda não é conferida.
+- **BLOQUEADO.** Um quadro barrado pelo portão silencia o transceptor e esquece os valores. Nenhum teste do núcleo chega a isso, porque o núcleo nunca manda um quadro fora da lista ([`TESTES.md` §5](TESTES.md)).
+
 ### 2.5 Sem resposta
 
 O transceptor fica silencioso. O ESP32 espera 2 s se o carro parou de responder há menos de 1 minuto, e 10 s depois disso. Então volta a ESCUTANDO, e o ciclo escuta → 01 00 se repete. O minuto conta a partir da última vez em que o ESP32 esteve em LENDO.

@@ -1,12 +1,14 @@
-"""End to end: the headless simulator runs roteiros against the real native firmware (#20 to #22).
+"""End to end: the headless simulator runs roteiros against the real native firmware (#20 to #25).
 
 It needs the firmware built with `pio run -e native`, which ./verifica.sh does first.
 Without it, the tests are skipped, as in test_native_firmware.py. The runs go side by side,
-started once for the whole class, so the tests take as long as the longest roteiro.
+started once for the whole class, so the tests take as long as the longest roteiro. They run
+with --sem-can, except the OBD one, which needs vcan0 and is skipped without it (README).
 """
 
 import json
 import os
+import socket
 import subprocess
 import sys
 import tempfile
@@ -16,8 +18,19 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 FIRMWARE = os.path.join(HERE, os.pardir, ".pio", "build", "native", "program")
 SIMULATOR = os.path.join(HERE, "simulator.py")
 
-# The restart from the simulator gives a new boot. Without PING the OBD stays in
-# ESPERANDO_PI, now and once the OBD arrives (#25).
+
+def _has_vcan0():
+    try:
+        with socket.socket(socket.AF_CAN, socket.SOCK_RAW, socket.CAN_RAW) as sock:
+            sock.bind(("vcan0",))
+        return True
+    except OSError:
+        return False
+
+
+HAS_VCAN0 = _has_vcan0()
+
+# The restart from the simulator gives a new boot. Without PING the OBD stays in ESPERANDO_PI.
 RESTART = """\
 0:00 pi ping desliga
 0:02 confere obd esperando-pi
@@ -54,6 +67,17 @@ RATES_AND_STUCK_PI = """\
 0:19 fim
 """
 
+# The proof of #25 on vcan0: the car starts, and the Decoder gets OBD from the ECU simulada.
+OBD = """\
+0:00 ignição liga
+0:01 partida
+0:03 acelerador 30%
+0:06 confere obd lendo
+0:06 confere pid rpm presente
+0:06 confere pid speed presente
+0:07 fim
+"""
+
 
 @unittest.skipUnless(os.path.exists(FIRMWARE), "native firmware not built (pio run -e native)")
 class HeadlessSimulator(unittest.TestCase):
@@ -65,16 +89,19 @@ class HeadlessSimulator(unittest.TestCase):
         cls.runs = {name: cls.start(name, roteiro) for name, roteiro in (
             ("right", RESTART.format(boots=2)), ("wrong", RESTART.format(boots=3)), ("imu", IMU),
             ("rates_and_stuck_pi", RATES_AND_STUCK_PI))}
+        if HAS_VCAN0:
+            # The only run on vcan0: two would answer each other's firmware.
+            cls.runs["obd"] = cls.start("obd", OBD, can=True)
 
     @classmethod
-    def start(cls, name, roteiro):
+    def start(cls, name, roteiro, can=False):
         """The simulator on its own port, so the runs go side by side."""
         path = os.path.join(cls.dir.name, f"{name}.txt")
         with open(path, "w", encoding="utf-8") as file:
             file.write(roteiro)
         process = subprocess.Popen(
             [sys.executable, SIMULATOR, "--firmware", FIRMWARE, "--sem-tela", "--roteiro", path,
-             "--porta", os.path.join(cls.dir.name, f"{name}-esp32")],
+             "--porta", os.path.join(cls.dir.name, f"{name}-esp32")] + ([] if can else ["--sem-can"]),
             stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
         cls.addClassCleanup(cls.stop, process)
         return process
@@ -134,6 +161,23 @@ class HeadlessSimulator(unittest.TestCase):
         # A message dropped in the ESP32 spends no seq, so the cable shows no gap.
         self.assertEqual(0, summary["decoder"]["counters"]["lost"])
         self.assertEqual(0, summary["esp32"]["counters"]["rejected"])
+
+    @unittest.skipUnless(HAS_VCAN0, "no vcan0 (README: sudo ip link add dev vcan0 type vcan)")
+    def test_the_car_starts_and_the_decoder_gets_obd_from_the_ecu_simulada(self):
+        code, summary = self.finish("obd")
+        self.assertEqual(0, code, summary)
+        self.assertEqual({"passed": 3, "failed": []}, summary["checks"])
+        self.assertEqual(0, summary["outside_list"])
+        self.assertEqual(0, summary["esp32"]["counters"]["blocked"])
+        self.assertEqual("reading", summary["esp32"]["obd_state"])
+        self.assertGreater(summary["samples"]["obd"], 15)  # 5 a second, from about 1.2 s
+        # The values as the model has them, a sample period or so later: 4 s at 30% throttle.
+        obd, car = summary["last_samples"]["obd"], summary["car_obd"]
+        self.assertEqual(set(car), set(obd) - {"age_ms"})
+        self.assertGreater(car["speed"], 20)
+        self.assertAlmostEqual(car["speed"], obd["speed"], delta=3)
+        self.assertAlmostEqual(car["rpm"], obd["rpm"], delta=0.1 * car["rpm"])
+        self.assertTrue(all(age < 1500 for age in obd["age_ms"].values()), obd["age_ms"])
 
 
 if __name__ == "__main__":

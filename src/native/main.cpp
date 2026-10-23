@@ -1,5 +1,5 @@
 // Firmware nativo da fase 1 (docs/PLATAFORMA.md §4.2): o núcleo num laço com ppoll() no
-// pty, com o próximo prazo do núcleo como limite de espera.
+// socket CAN e no pty, com o próximo prazo do núcleo como limite de espera.
 //
 //   pio run -e native && .pio/build/native/program [--can vcan0] [--path /tmp/vguard-esp32]
 #include <poll.h>
@@ -16,6 +16,7 @@
 #include "core.h"
 #include "imu_sim.h"
 #include "pty_link.h"
+#include "socket_can.h"
 
 #ifndef VGUARD_FIRMWARE_VERSION
 #define VGUARD_FIRMWARE_VERSION "0.0.0"
@@ -27,7 +28,8 @@ using namespace vguard;
 
 constexpr const char* kDefaultPath = "/tmp/vguard-esp32";
 
-// A porta CAN do notebook chega no ticket "OBD no vcan0: o caminho feliz" (#25).
+// Sem --can: um barramento sem ninguém, em que nada sai nem chega. O OBD descobre sem
+// resposta, como com o carro desligado. Serve aos testes que rodam sem o vcan0.
 class NoCan : public CanPort {
 public:
     void listen() override {}
@@ -87,7 +89,7 @@ int main(int argc, char** argv) {
         if (arg == "--path" && i + 1 < argc) {
             path = argv[++i];
         } else if (arg == "--can" && i + 1 < argc) {
-            can_iface = argv[++i];  // aceito desde já, para o simulador iniciar o firmware como no §4.2
+            can_iface = argv[++i];
         } else {
             return usage(argv[0]);
         }
@@ -116,7 +118,14 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    NoCan can;
+    NoCan no_can;
+    native::SocketCan socket_can;
+    const bool has_can = !can_iface.empty();
+    if (has_can && !socket_can.open(can_iface, error)) {
+        log_line(clock, error.c_str());
+        return 1;
+    }
+    CanPort& can = has_can ? static_cast<CanPort&>(socket_can) : no_can;
     ImuSim imu;  // o notebook só tem a IMU simulada (PLATAFORMA.md §5)
     NotebookSystem system;
     const BootInfo boot{draw_boot(), ResetReason::kPowerOn, Platform::kNotebook, VGUARD_FIRMWARE_VERSION};
@@ -124,25 +133,27 @@ int main(int argc, char** argv) {
     core.register_dev_handler(ImuSim::kMessageType, imu);
 
     char line[256];
-    std::snprintf(line, sizeof(line), "native firmware %s on %s -> %s, boot 0x%04X",
-                  VGUARD_FIRMWARE_VERSION, path.c_str(), link.pty_name().c_str(), boot.boot);
+    std::snprintf(line, sizeof(line), "native firmware %s on %s -> %s, CAN %s, boot 0x%04X",
+                  VGUARD_FIRMWARE_VERSION, path.c_str(), link.pty_name().c_str(),
+                  has_can ? can_iface.c_str() : "none", boot.boot);
     log_line(clock, line);
-    if (!can_iface.empty()) {
-        std::snprintf(line, sizeof(line), "--can %s ignored: no CAN port yet (#25)", can_iface.c_str());
-        log_line(clock, line);
-    }
 
     core.start(clock.now_us());
     int status = 0;
     while (!g_stop) {
         const uint64_t deadline = core.next_deadline_us();
         const uint64_t now = clock.now_us();
-        const uint64_t wait_us = deadline > now ? deadline - now : 0;
+        // O resultado de uma transmissão espera só até a volta seguinte.
+        const uint64_t wait_us = socket_can.has_tx_result() || deadline <= now ? 0 : deadline - now;
         const timespec timeout{static_cast<time_t>(wait_us / 1'000'000),
                                static_cast<long>(wait_us % 1'000'000) * 1000};
-        pollfd fd{link.fd(), static_cast<short>(POLLIN | (link.has_pending() ? POLLOUT : 0)), 0};
+        pollfd fds[2] = {
+            {link.fd(), static_cast<short>(POLLIN | (link.has_pending() ? POLLOUT : 0)), 0},
+            {has_can ? socket_can.fd() : -1, POLLIN, 0},  // um fd negativo o ppoll() ignora
+        };
+        pollfd& fd = fds[0];
 
-        if (ppoll(&fd, 1, &timeout, &during_wait) < 0) {
+        if (ppoll(fds, 2, &timeout, &during_wait) < 0) {
             if (errno == EINTR) {
                 continue;
             }
@@ -156,6 +167,30 @@ int main(int argc, char** argv) {
             log_line(clock, "the pty closed");
             status = 1;
             break;
+        }
+        if (fds[1].revents & (POLLERR | POLLHUP | POLLNVAL)) {
+            log_line(clock, "the CAN socket failed");
+            status = 1;
+            break;
+        }
+        TxResult result;
+        int tx_error = 0;
+        if (socket_can.take_tx_result(result, tx_error)) {
+            if (tx_error != 0) {
+                std::snprintf(line, sizeof(line), "can write: %s", std::strerror(tx_error));
+                log_line(clock, line);
+            }
+            core.on_can_tx_result(result, t_us);
+        }
+        if (fds[1].revents & POLLIN) {
+            // Um punhado por volta, para o pty e os prazos não esperarem uma rajada inteira.
+            CanFrame frame;
+            bool for_core = false;
+            for (int i = 0; i < 64 && socket_can.read(frame, for_core); ++i) {
+                if (for_core) {
+                    core.on_can_frame(frame, t_us);
+                }
+            }
         }
         if (fd.revents & POLLIN) {
             uint8_t data[512];

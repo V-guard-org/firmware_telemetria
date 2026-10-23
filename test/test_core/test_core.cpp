@@ -458,10 +458,13 @@ static void test_core_never_allocates_memory() {
     FakeLink link;
     FakeImu imu;
     FakeSystem sys;
+    FakeCar car;  // e o OBD lê os 8 PIDs, com a Pi presente
     imu.present = true;  // a IMU lê e manda amostras o tempo todo
+    car.add_central(0x7E8, {0x04, 0x05, 0x0B, 0x0C, 0x0D, 0x0F, 0x11, 0x42});
     const size_t before = g_allocations;
 
     Harness h(can, link, imu, sys);
+    h.connect(car);
     h.start(0);
     h.taxas(10, 10, 100'000);  // 10/s, para os 30 s caberem nos 64 KB da UART falsa
     for (uint16_t s = 0; s < 30; ++s) {
@@ -474,6 +477,7 @@ static void test_core_never_allocates_memory() {
 
     TEST_ASSERT_EQUAL(before, g_allocations);
     TEST_ASSERT_EQUAL(30, link.messages_of(MessageType::kPong).size());
+    TEST_ASSERT_TRUE(link.messages_of(MessageType::kObd).size() > 250);
 }
 
 int main() {

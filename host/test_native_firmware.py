@@ -1,4 +1,4 @@
-"""End to end: the Decoder opens the symlink of the real native firmware (#19, PLATAFORMA.md §4.2).
+"""End to end: the Decoder opens the symlink of the real native firmware (#19, #25, PLATAFORMA.md §4.2).
 
 It needs the firmware built with `pio run -e native`, which ./verifica.sh does first.
 Without it, the test is skipped, as on the Pi.
@@ -25,9 +25,8 @@ class NativeFirmwareWithDecoder(unittest.TestCase):
         self.dir = tempfile.TemporaryDirectory()
         self.addCleanup(self.dir.cleanup)
         self.path = os.path.join(self.dir.name, "vguard-esp32")
-        # --can is accepted and ignored until the CAN port arrives (#25).
-        self.firmware = subprocess.Popen([FIRMWARE, "--can", "vcan0", "--path", self.path],
-                                         stderr=subprocess.PIPE)
+        # Without --can: no CAN, so the test runs without vcan0.
+        self.firmware = subprocess.Popen([FIRMWARE, "--path", self.path], stderr=subprocess.PIPE)
         self.addCleanup(self.stop_firmware)
         deadline = time.monotonic() + 2
         while not os.path.exists(self.path):
@@ -63,7 +62,8 @@ class NativeFirmwareWithDecoder(unittest.TestCase):
         stats = self.decoder.stats()
         esp32 = stats["esp32"]
         self.assertEqual("notebook", esp32["platform"])
-        self.assertEqual("waiting_pi", esp32["obd_state"])
+        # The Decoder's PINGs take the OBD out of ESPERANDO_PI; with no CAN, nothing answers it.
+        self.assertIn(esp32["obd_state"], ("listening", "discovering", "no_response"))
         self.assertEqual("power_on", esp32["reset_reason"])
         self.assertEqual(1, esp32["protocol"])
         self.assertEqual((25, 5), (esp32["imu_rate"], esp32["obd_rate"]))
@@ -80,6 +80,19 @@ class NativeFirmwareWithDecoder(unittest.TestCase):
         self.firmware.terminate()
         self.assertEqual(0, self.firmware.wait(timeout=2))
         self.assertFalse(os.path.lexists(self.path))
+
+
+@unittest.skipUnless(os.path.exists(FIRMWARE), "native firmware not built (pio run -e native)")
+class NativeFirmwareWithoutTheCanChannel(unittest.TestCase):
+
+    def test_a_missing_can_channel_stops_the_firmware_with_the_reason(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = os.path.join(directory, "vguard-esp32")
+            result = subprocess.run([FIRMWARE, "--can", "vguard-none0", "--path", path],
+                                    stderr=subprocess.PIPE, text=True, timeout=5)
+            self.assertEqual(1, result.returncode)
+            self.assertIn("vguard-none0", result.stderr)
+            self.assertFalse(os.path.lexists(path))
 
 
 if __name__ == "__main__":

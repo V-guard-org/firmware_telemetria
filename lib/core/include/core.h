@@ -8,6 +8,7 @@
 
 #include "closed_list_gate.h"
 #include "imu_machine.h"
+#include "obd_machine.h"
 #include "ports.h"
 #include "protocol.h"
 
@@ -60,7 +61,7 @@ public:
 private:
     bool push_byte(MessageReader& reader, uint8_t byte);
     void on_link_message(const Message& msg, uint64_t t_us);
-    void apply_taxas(const Message& msg);
+    void apply_taxas(const Message& msg, uint64_t t_us);
     bool deliver_dev_message(const Message& msg, uint64_t t_us);
     void send_status(uint64_t t_us);
     void send(MessageType type, const uint8_t* body, size_t len);
@@ -69,12 +70,12 @@ private:
     bool take_log_slot(uint64_t t_us);
     void on_frame_blocked(const CanFrame& frame, bool released) override;
 
-    ClosedListGate gate_;  // o OBD (#25) recebe o portão, nunca a porta CAN
+    ClosedListGate gate_;
+    ObdMachine obd_;              // recebe o portão, nunca a porta CAN; tem a taxa do OBD em uso
     LinkPort& link_;
     ImuPort& imu_;
     SystemPort& system_;
     ImuMachine imu_machine_;      // tem a taxa de envio da IMU em uso
-    uint8_t obd_rate_;            // a do OBD, que a máquina do OBD (#25) segue
 
     uint16_t boot_;
     ResetReason reset_reason_;

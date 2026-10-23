@@ -52,7 +52,8 @@ class ReadingRoteiros(unittest.TestCase):
                     "troca de faixa", "imu falha liga", "imu falha desliga", "imu sem-sinal liga",
                     "imu sem-sinal desliga", "ruído liga", "ruído desliga",
                     "confere imu ok", "confere imu falha", "confere boots 1",
-                    "confere vazias obd 0", "confere vazias imu 12"]
+                    "confere vazias obd 0", "confere vazias imu 12",
+                    "confere pid rpm presente", "confere pid voltage ausente"]
         commands += [f"confere obd {state}" for state in (
             "esperando-pi", "escutando", "descobrindo", "lendo", "sem-resposta", "velocidade-errada",
             "linha-presa", "falha-can", "bloqueado")]
@@ -67,7 +68,8 @@ class ReadingRoteiros(unittest.TestCase):
                      "confere obd voando", "confere imu bem", "confere boots -1", "confere vazias gps 1",
                      "pi ping talvez", "ignição", "imu falha", "ruído talvez", "curva",
                      "taxas imu 30 obd 5", "taxas imu 50 obd 3", "taxas imu 0 obd 0", "taxas imu 50",
-                     "taxas obd 5 imu 50", "confere taxas imu 33 obd 5", "pi trava já"):
+                     "taxas obd 5 imu 50", "confere taxas imu 33 obd 5", "pi trava já",
+                     "confere pid gps presente", "confere pid rpm talvez", "confere pid rpm"):
             with self.subTest(line=line), self.assertRaisesRegex(RoteiroError, r"^linha 2: "):
                 parse_roteiro(f"0:00 partida\n0:01 {line}\n")
 

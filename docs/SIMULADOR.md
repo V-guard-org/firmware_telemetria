@@ -68,6 +68,12 @@ A ECU simulada não espera o tique: cada requisição lida do socket ganha uma r
 - **`fora_da_lista`** conta qualquer quadro recebido fora da regra do [`TESTES.md` §5](TESTES.md), mesmo com a ignição desligada, e esse quadro nunca tem resposta.
 - O `fake_esp32.py` passa a usar as fórmulas inversas da ECU simulada, em vez de uma cópia própria.
 
+*Emenda do #25 (23/10/2026):*
+- **O socket.** O simulador abre o canal do `--can` sem filtro e entrega à ECU simulada cada quadro lido, com o instante da leitura. As respostas esperam numa fila por instante, e o `select()` acorda na mais próxima. Um socket cheio perde a resposta. O firmware filho recebe o mesmo `--can`.
+- **Sem CAN.** Com `--sem-can`, o simulador não abre o socket, e o firmware filho roda sem `--can` ([`PLATAFORMA.md` §4.2](PLATAFORMA.md)). É o modo dos testes que rodam sem o `vcan0`.
+- **Um simulador por canal.** Dois simuladores no mesmo `vcan0` responderiam ao firmware um do outro.
+- **O tique primeiro.** Numa volta do laço, o tique vencido roda antes dos bytes lidos. Assim, as ações de `0:00`, como `pi ping desliga`, valem antes de o decodificador responder ao STATUS do boot com o 1º PING. Com o OBD, esse PING tiraria o firmware de ESPERANDO_PI.
+
 O servidor da tela roda em outra thread. Ele só lê um retrato do estado e põe os cliques numa fila; quem mexe no modelo é sempre a thread do laço.
 
 ## 3. Modelo do carro
@@ -235,6 +241,11 @@ Sem a tela, o programa roda o roteiro e, ao fim, imprime um resumo, também como
 
 O programa termina com código de saída 1 se algum `confere` ou algum critério falhou (emenda do #13).
 
+*Emenda do #25 (23/10/2026):*
+- **`fora_da_lista`** vai no resumo como `outside_list`, e como `null` com `--sem-can`.
+- **`car_obd`:** os valores OBD do modelo do carro no fim da corrida, para comparar com a última amostra OBD (`last_samples`).
+- **`confere pid <nome> presente|ausente`** olha a última amostra OBD entregue, contando a vazia `{}`. Os nomes são os do [`DECODIFICADOR.md` §3.3](DECODIFICADOR.md); um nome desconhecido não deixa o roteiro rodar.
+
 *Emenda do #20 (15/10/2026):*
 - **Saída.** O registro (as linhas do roteiro, o resultado de cada `confere`, as mudanças do STATUS, as amostras vazias e os LOGs do ESP32) sai na saída padrão, uma linha por fato, com o tempo do simulador. O resumo vem no fim, e a linha JSON é sempre a última. A saída do firmware nativo continua na saída de erro.
 - **Códigos de saída.**
@@ -258,6 +269,7 @@ Com `--gravar sessao.jsonl`, com ou sem tela, o programa grava uma linha por aç
 |---|---|---|
 | `--porta CAMINHO` | `/tmp/vguard-esp32` | A porta do firmware; nas fases 2 e 4, `/dev/vguard-esp32` |
 | `--can CANAL` | `vcan0` | O canal da ECU simulada; na fase 2, `can0` |
+| `--sem-can` | não | Sem CAN nem ECU simulada; o firmware nativo roda sem `--can` (emenda do #25) |
 | `--firmware CAMINHO` | — | Fase 1: inicia o firmware nativo como processo filho, o que permite "Reiniciar o ESP32" |
 | `--http-port N` | 8080 | A porta da tela, só em `127.0.0.1` |
 | `--roteiro ARQUIVO` | — | Roda o roteiro ao iniciar |

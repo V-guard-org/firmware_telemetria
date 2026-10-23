@@ -82,7 +82,6 @@ class NativeFirmwareWithDecoder(unittest.TestCase):
         self.assertFalse(os.path.lexists(self.path))
 
 
-
 @unittest.skipUnless(os.path.exists(FIRMWARE), "native firmware not built (pio run -e native)")
 class NativeFirmwareWithoutTheCanChannel(unittest.TestCase):
 

@@ -252,7 +252,7 @@ bool Core::take_log_slot(uint64_t t_us) {
 // Um quadro fora da lista fechada, ou fora da liberação, que o portão barrou: só por defeito
 // no código (PLATAFORMA.md §3.2). O OBD vai a BLOQUEADO, e sai um LOG de erro.
 void Core::on_frame_blocked(const CanFrame& frame, bool released) {
-    obd_.lock();
+    obd_.on_frame_blocked();
     // No máximo cerca de 105 bytes, sempre abaixo dos 200 do LOG.
     char text[kMaxLogText + 1];
     size_t len = static_cast<size_t>(std::snprintf(

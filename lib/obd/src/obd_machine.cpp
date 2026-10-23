@@ -39,16 +39,11 @@ bool supports(const uint8_t* maps, uint8_t pid) {
     return (maps[index / 8] >> (7 - index % 8)) & 1;
 }
 
-// Uma resposta do modo 01 num quadro único, de 0x7E8 a 0x7EF: a central, o PID e os bytes de
-// dados, sem o modo e sem o PID. Uma resposta em vários quadros não serve (§2.4).
-struct Answer {
-    uint8_t central;
-    uint8_t pid;
-    uint8_t len;
-    const uint8_t* data;
-};
+}  // namespace
 
-bool parse_answer(const CanFrame& frame, Answer& out) {
+// Uma resposta do modo 01 num quadro único, de 0x7E8 a 0x7EF. Uma resposta em vários quadros
+// não serve (§2.4).
+bool ObdMachine::parse_answer(const CanFrame& frame, Answer& out) {
     if (frame.extended || frame.remote || frame.id < kFirstAnswerId ||
         frame.id >= kFirstAnswerId + 8 || frame.dlc < 3 || frame.dlc > 8) {
         return false;
@@ -62,8 +57,6 @@ bool parse_answer(const CanFrame& frame, Answer& out) {
            static_cast<uint8_t>(length - 2), frame.data + 3};
     return true;
 }
-
-}  // namespace
 
 ObdMachine::ObdMachine(CanPort& gate, uint8_t rate) : gate_(gate), rate_(rate) {}
 
@@ -82,12 +75,12 @@ void ObdMachine::on_frame(const CanFrame& frame, uint64_t t_us) {
         return;
     }
     if (state_ == ObdState::kDiscovering) {
-        if (answer.pid == map_ * kMapStep && answer.len >= 4) {
-            std::memcpy(&maps_[answer.central][map_ * 4], answer.data, 4);
+        if (answer.pid == asked_map_ * kMapStep && answer.len >= 4) {
+            std::memcpy(&maps_[answer.central][asked_map_ * 4], answer.data, 4);
             map_answered_ = true;
         }
     } else if (state_ == ObdState::kReading) {
-        on_reading_answer(answer.central, answer.pid, answer.data, answer.len, t_us);
+        on_reading_answer(answer, t_us);
     }
 }
 
@@ -138,6 +131,9 @@ uint64_t ObdMachine::next_deadline_us() const {
         case ObdState::kDiscovering:
             return last_request_us_ + kAnswerTimeoutUs;
         case ObdState::kReading: {
+            if (agenda_len_ == 0) {
+                return kNever;  // a agenda vazia não pergunta nem manda amostras
+            }
             uint64_t request = kNever;
             if (pending_) {
                 request = last_request_us_ + kAnswerTimeoutUs;
@@ -162,7 +158,7 @@ void ObdMachine::set_rate(uint8_t rate, uint64_t now_us) {
     }
 }
 
-void ObdMachine::lock() {
+void ObdMachine::on_frame_blocked() {
     enter_silent(ObdState::kLocked);
 }
 
@@ -183,7 +179,7 @@ void ObdMachine::end_listening(uint64_t now_us) {
 }
 
 void ObdMachine::ask_map(size_t map, uint64_t now_us) {
-    map_ = map;
+    asked_map_ = map;
     map_answered_ = false;
     send_request(kFunctionalId, static_cast<uint8_t>(map * kMapStep), now_us);
 }
@@ -195,18 +191,18 @@ void ObdMachine::end_map_window(uint64_t now_us) {
     } else {
         ++timeouts_;
     }
-    if (!map_answered_ && map_ == 0) {
+    if (!map_answered_ && asked_map_ == 0) {
         enter_silent(ObdState::kNoResponse);  // a nova pergunta, 2 s ou 10 s depois, chega no #26
         return;
     }
     // O último bit do mapa diz que o próximo existe; uma pergunta sem resposta encerra a
     // descoberta com o que já se tem.
-    bool next = false;
-    for (size_t c = 0; map_answered_ && map_ + 1 < kMaps && c < kCentrals; ++c) {
-        next = next || (maps_[c][map_ * 4 + 3] & 0x01) != 0;
+    bool announced = false;
+    for (size_t c = 0; map_answered_ && asked_map_ + 1 < kMaps && c < kCentrals; ++c) {
+        announced = announced || (maps_[c][asked_map_ * 4 + 3] & 0x01) != 0;
     }
-    if (next) {
-        ask_map(map_ + 1, now_us);
+    if (announced) {
+        ask_map(asked_map_ + 1, now_us);
     } else {
         start_reading(now_us);
     }
@@ -225,7 +221,7 @@ void ObdMachine::start_reading(uint64_t now_us) {
     for (const uint8_t pid : kListPids) {
         for (uint8_t c = 0; c < kCentrals; ++c) {
             if (supports(maps_[c], pid)) {
-                agenda_[agenda_len_++] = {pid, c, period_of(pid), now_us, false, 0, {}, 0};
+                agenda_[agenda_len_++] = {pid, c, period_of(pid), now_us, false, false, 0, {}, 0};
                 break;
             }
         }
@@ -236,20 +232,22 @@ void ObdMachine::start_reading(uint64_t now_us) {
     ask_next_pid(now_us);
 }
 
-// Só vale a resposta da central escolhida, com o PID da agenda e bytes suficientes. Uma
-// resposta atrasada ainda vale como valor, mas a requisição já contou como sem resposta.
-void ObdMachine::on_reading_answer(uint8_t central, uint8_t pid, const uint8_t* data, uint8_t len,
-                                   uint64_t t_us) {
+// Só vale a resposta da central escolhida, a um PID perguntado e ainda sem resposta, com bytes
+// suficientes. Uma resposta atrasada ainda vale como valor, mas a requisição já contou como
+// sem resposta; uma que ninguém pediu, como a de outro leitor no carro, não vale.
+void ObdMachine::on_reading_answer(const Answer& answer, uint64_t t_us) {
     for (size_t i = 0; i < agenda_len_; ++i) {
         Entry& e = agenda_[i];
-        if (e.pid != pid || e.central != central || len < needed_bytes(pid)) {
+        if (e.pid != answer.pid || e.central != answer.central || !e.awaiting ||
+            answer.len < needed_bytes(answer.pid)) {
             continue;
         }
-        e.len = len < sizeof(e.raw) ? len : sizeof(e.raw);
-        std::memcpy(e.raw, data, e.len);
+        e.awaiting = false;
+        e.len = answer.len < sizeof(e.raw) ? answer.len : sizeof(e.raw);
+        std::memcpy(e.raw, answer.data, e.len);
         e.has_value = true;
         e.answered_us = t_us;
-        if (pending_ && pending_pid_ == pid) {
+        if (pending_ && pending_pid_ == answer.pid) {
             pending_ = false;
             ++answered_;
         }
@@ -271,6 +269,7 @@ void ObdMachine::ask_next_pid(uint64_t now_us) {
         return;
     }
     next->due_us = now_us + next->period_us;
+    next->awaiting = true;
     pending_ = true;
     pending_pid_ = next->pid;
 }

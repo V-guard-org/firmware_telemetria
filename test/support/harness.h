@@ -29,9 +29,9 @@ public:
     void connect(FakeCar& car) { car_ = &car; }
 
     void start(uint64_t t_us = 0) {
-        at(t_us);
+        set_clock(t_us);
         core_.start(t_us);
-        after_call(t_us);
+        deliver_transmits(t_us);
     }
 
     // Avança o relógio até t_us, chamando o núcleo em cada prazo vencido e em cada resposta do
@@ -51,9 +51,9 @@ public:
                 break;
             }
             TEST_ASSERT_TRUE_MESSAGE(deadline >= now_us_, "prazo no passado");
-            at(deadline);
+            set_clock(deadline);
             core_.on_deadline(deadline);
-            after_call(deadline);
+            deliver_transmits(deadline);
         }
         now_us_ = t_us;
     }
@@ -61,33 +61,24 @@ public:
     // A plataforma chama o núcleo uma vez só, em t_us, bem depois do prazo: o notebook dormiu.
     void late_deadline(uint64_t t_us) {
         TEST_ASSERT_TRUE_MESSAGE(t_us >= now_us_, "o relógio falso não volta");
-        at(t_us);
+        set_clock(t_us);
         core_.on_deadline(t_us);
-        after_call(t_us);
+        deliver_transmits(t_us);
     }
 
     // Um quadro que chega do barramento no instante t_us.
     void can_frame(const CanFrame& frame, uint64_t t_us) {
-        run_until(t_us);
-        at(t_us);
-        core_.on_can_frame(frame, t_us);
-        after_call(t_us);
+        enter(t_us, [&] { core_.on_can_frame(frame, t_us); });
     }
 
     // Um pedaço de bytes da Pi, que chega no instante t_us.
     void link_bytes(const uint8_t* data, size_t len, uint64_t t_us) {
-        run_until(t_us);
-        at(t_us);
-        core_.on_link_bytes(data, len, t_us);
-        after_call(t_us);
+        enter(t_us, [&] { core_.on_link_bytes(data, len, t_us); });
     }
 
     // Um pedaço de bytes da 2ª entrada, a UART0 da fase 4 (PLATAFORMA.md §5), no instante t_us.
     void dev_bytes(const uint8_t* data, size_t len, uint64_t t_us) {
-        run_until(t_us);
-        at(t_us);
-        core_.on_dev_bytes(data, len, t_us);
-        after_call(t_us);
+        enter(t_us, [&] { core_.on_dev_bytes(data, len, t_us); });
     }
 
     // Uma mensagem da Pi inteira, num pedaço só, no instante t_us.
@@ -111,10 +102,7 @@ public:
 
     // Um aviso ou um erro da plataforma, no instante t_us.
     void platform_log(LogLevel level, const char* text, uint64_t t_us) {
-        run_until(t_us);
-        at(t_us);
-        core_.on_platform_log(level, text, t_us);
-        after_call(t_us);
+        enter(t_us, [&] { core_.on_platform_log(level, text, t_us); });
     }
 
     StatusView last_status() const {
@@ -124,14 +112,24 @@ public:
     }
 
 private:
-    void at(uint64_t t_us) {
+    // Um evento no instante t_us: o relógio avança até lá, o núcleo é chamado, e o que ele
+    // transmitiu volta como resultado e chega ao carro.
+    template <typename Call>
+    void enter(uint64_t t_us, Call&& call) {
+        run_until(t_us);
+        set_clock(t_us);
+        call();
+        deliver_transmits(t_us);
+    }
+
+    void set_clock(uint64_t t_us) {
         now_us_ = t_us;
         can_.now_us = t_us;
     }
 
     // Cada quadro transmitido volta como resultado ok na volta seguinte do laço, no mesmo
     // instante, como no vcan (PLATAFORMA.md §3.1), e chega ao carro.
-    void after_call(uint64_t t_us) {
+    void deliver_transmits(uint64_t t_us) {
         while (delivered_ < can_.count()) {
             const FakeCan::Call call = can_.call(delivered_++);
             if (call.what != 'X') {

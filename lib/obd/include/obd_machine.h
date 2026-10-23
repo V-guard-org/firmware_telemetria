@@ -46,8 +46,9 @@ public:
     bool on_deadline(uint64_t now_us, ObdSample& sample);
     uint64_t next_deadline_us() const;
 
-    // Um quadro barrado pelo portão, só por defeito no código: BLOQUEADO até reiniciar.
-    void lock();
+    // O portão barrou um quadro, o que só acontece por defeito no código: BLOQUEADO até
+    // reiniciar. Chega de dentro do transmit() do próprio OBD, pelo núcleo.
+    void on_frame_blocked();
 
     // A taxa nova vale a partir da próxima amostra (PROTOCOLO.md §4.2): ela sai no próximo
     // múltiplo do período novo.
@@ -64,12 +65,22 @@ private:
     static constexpr size_t kCentrals = 8;  // as respostas de 0x7E8 a 0x7EF
     static constexpr size_t kMaps = 3;      // 01 00, 01 20 e 01 40
 
+    // Uma resposta do modo 01 num quadro único: a central (0 a 7), o PID e os bytes de dados,
+    // sem o modo e sem o PID.
+    struct Answer {
+        uint8_t central;
+        uint8_t pid;
+        uint8_t len;
+        const uint8_t* data;
+    };
+
     // Um PID da agenda: a quem perguntar, quando, e o último valor.
     struct Entry {
         uint8_t pid;
         uint8_t central;      // 0 a 7: responde em 0x7E8 + central, pergunta em 0x7E0 + central
         uint64_t period_us;
         uint64_t due_us;
+        bool awaiting;        // perguntado e ainda sem resposta, mesmo depois dos 50 ms
         bool has_value;
         uint8_t len;
         uint8_t raw[4];
@@ -80,8 +91,8 @@ private:
     void ask_map(size_t map, uint64_t now_us);
     void end_map_window(uint64_t now_us);
     void start_reading(uint64_t now_us);
-    void on_reading_answer(uint8_t central, uint8_t pid, const uint8_t* data, uint8_t len,
-                           uint64_t t_us);
+    static bool parse_answer(const CanFrame& frame, Answer& out);
+    void on_reading_answer(const Answer& answer, uint64_t t_us);
     void ask_next_pid(uint64_t now_us);
     bool send_request(uint32_t id, uint8_t pid, uint64_t now_us);
     bool build_sample(uint64_t now_us, ObdSample& sample) const;
@@ -94,7 +105,7 @@ private:
     uint64_t listen_end_us_ = 0;
 
     // A descoberta
-    size_t map_ = 0;                               // o mapa perguntado: 0, 1 ou 2
+    size_t asked_map_ = 0;                         // 0, 1 ou 2: 01 00, 01 20 ou 01 40
     bool map_answered_ = false;
     uint8_t maps_[kCentrals][kMaps * 4] = {};      // o que cada central respondeu
     uint8_t pids_[kMaps * 4] = {};                 // a união, para o STATUS

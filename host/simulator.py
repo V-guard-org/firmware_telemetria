@@ -12,11 +12,11 @@ screen comes with #27.
 
 import argparse
 import collections
+import heapq
 import json
 import logging
 import os
 import re
-import heapq
 import select
 import signal
 import socket

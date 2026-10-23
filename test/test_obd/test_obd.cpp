@@ -188,9 +188,12 @@ static void test_each_pid_goes_to_the_lowest_central_that_has_it() {
     const uint8_t pids[12] = {0x18, 0x3A, 0x80, 0x01, 0x00, 0x00, 0x00, 0x01, 0x40, 0x00, 0x00, 0x00};
     TEST_ASSERT_EQUAL_HEX8_ARRAY(pids, h.last_status().pids, 12);
 
-    // Logo antes da amostra de 5 s: RPM da central errada e velocidade da central errada.
+    // Logo antes da amostra de 5 s: RPM da central errada, velocidade da central errada e uma
+    // temperatura que ninguém pediu (a última pergunta já teve resposta), como a de outro
+    // leitor no carro.
     h.can_frame(answer(0x7E9, {0x04, 0x41, 0x0C, 0xDE, 0xAD}), 4'999'000);
     h.can_frame(answer(0x7E8, {0x03, 0x41, 0x0D, 0xFF}), 4'999'100);
+    h.can_frame(answer(0x7E8, {0x03, 0x41, 0x05, 0xFF}), 4'999'200);
     h.run_until(5'000'000);
     const ObdView sample = obd_samples(link).back();
     TEST_ASSERT_EQUAL_UINT64(5'000'000, sample.t_us);
@@ -199,6 +202,12 @@ static void test_each_pid_goes_to_the_lowest_central_that_has_it() {
     TEST_ASSERT_EQUAL_HEX8_ARRAY(rpm, sample.find(0x0C)->raw.data(), 2);
     TEST_ASSERT_EQUAL(1, sample.find(0x0D)->raw.size());
     TEST_ASSERT_EQUAL_HEX8(0x32, sample.find(0x0D)->raw[0]);
+    TEST_ASSERT_EQUAL_HEX8(0x05, sample.find(0x05)->raw[0]);
+    uint64_t last_coolant = 0;
+    for (const FakeCan::Call& c : can.transmitted(kReadingFrom)) {
+        last_coolant = c.frame.data[2] == 0x05 && c.t_us < 4'999'200 ? c.t_us : last_coolant;
+    }
+    TEST_ASSERT_TRUE_MESSAGE(last_coolant + 5'000 < 4'999'200, "a temperatura ainda esperava resposta");
 }
 
 // Uma resposta que chega depois dos 50 ms: a requisição conta como sem resposta e a agenda não
@@ -236,12 +245,16 @@ static void test_a_late_answer_still_counts_as_the_value_of_its_pid() {
 }
 
 // Uma resposta em vários quadros é ignorada: pedir a continuação exigiria um quadro de controle
-// de fluxo, fora da lista fechada (§2.4). A requisição esgota o prazo, e o PID não aparece.
+// de fluxo, fora da lista fechada (§2.4). Também não valem uma resposta de outro modo e uma
+// sem os 2 bytes da fórmula. A requisição esgota o prazo, e o PID não aparece.
 static void test_an_answer_in_several_frames_is_ignored() {
     OneCentralCar t;
     t.car.multi_frame[0x42] = true;
     t.h.start(0);
     t.h.ping(1, 2'500'000);
+    // A tensão é perguntada pela 1ª vez em LENDO mais 350 ms; logo depois, as respostas erradas.
+    t.h.can_frame(answer(0x7E8, {0x04, 0x42, 0x42, 0x37, 0x14}), kReadingFrom + 351'000);
+    t.h.can_frame(answer(0x7E8, {0x03, 0x41, 0x42, 0x37}), kReadingFrom + 352'000);
     t.h.run_until(8'000'000);
 
     const StatusView s = t.h.last_status();

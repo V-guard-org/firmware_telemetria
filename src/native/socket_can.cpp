@@ -8,6 +8,7 @@
 #include <unistd.h>
 
 #include <cerrno>
+#include <cstdio>
 #include <cstring>
 
 namespace vguard::native {
@@ -54,14 +55,21 @@ void SocketCan::listen() {
 }
 
 void SocketCan::talk() {
-    listening_ = false;
     set_filter(true);
+    // O filtro só vale para os quadros que chegam depois dele. Os da escuta que ainda estão no
+    // socket são descartados, para que só 0x7E8–0x7EF chegue ao núcleo.
+    can_frame queued{};
+    while (::read(fd_, &queued, sizeof(queued)) > 0) {
+    }
+    listening_ = false;
 }
 
 void SocketCan::set_filter(bool answers_only) {
     // Sem filtro, o socket recebe tudo, como o nó em listen-only aceitando todos os quadros.
     const can_filter filter = answers_only ? can_filter{kFirstAnswerId, kAnswersMask} : can_filter{0, 0};
-    setsockopt(fd_, SOL_CAN_RAW, CAN_RAW_FILTER, &filter, sizeof(filter));
+    if (setsockopt(fd_, SOL_CAN_RAW, CAN_RAW_FILTER, &filter, sizeof(filter)) != 0) {
+        std::perror("can filter");  // o núcleo ainda confere o ID de cada resposta
+    }
 }
 
 void SocketCan::transmit(const CanFrame& frame) {

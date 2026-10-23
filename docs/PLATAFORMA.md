@@ -237,8 +237,9 @@ Com uma fila só, os eventos chegam ao núcleo na ordem em que aconteceram, e os
 - *Emenda do #25 (23/10/2026).* A porta CAN do notebook (`src/native/socket_can.cpp`):
   - **`--can CANAL`** abre o SocketCAN no canal. Se o canal não existe, o firmware termina com código 1 e diz o motivo no terminal.
   - **Sem `--can`,** não há porta CAN: nada sai nem chega, e o OBD descobre sem resposta, como com o carro desligado. É o que usam os testes que rodam sem o `vcan0`, que pede sudo.
-  - **Escuta.** Sem filtro, o socket recebe tudo, e os quadros só são contados. Com o `talk()`, o `CAN_RAW_FILTER` deixa passar só os quadros de dados de 11 bits de `0x7E8` a `0x7EF`, que vão ao núcleo.
-  - **Resultado da transmissão.** Um `write()` que falha, por exemplo com o canal desligado, volta como erro de barramento, com o motivo no terminal. O resultado espera no adaptador, e o `ppoll()` não dorme enquanto ele não sai.
+  - **Escuta.** Sem filtro, o socket recebe tudo, e os quadros só são contados. Com o `talk()`, o `CAN_RAW_FILTER` deixa passar só os quadros de dados de 11 bits de `0x7E8` a `0x7EF`, que vão ao núcleo. O filtro não vale para o que já estava no socket, então o `talk()` descarta esses quadros da escuta.
+  - **Resultado da transmissão.** Um `write()` que falha volta como erro de barramento, com o motivo no terminal, porque um resultado ok seria falso. O resultado espera no adaptador, e o `ppoll()` não dorme enquanto ele não sai.
+  - **Canal que cai.** Com o canal desligado (`ip link set vcan0 down`), o socket acusa erro no `ppoll()`, e o firmware termina com código 1, como quando o pty fecha.
   - **Leitura.** Até 64 quadros por volta do laço, para o pty e os prazos não esperarem uma rajada inteira.
 - **Versão do firmware.** É a de `[firmware] version` no `platformio.ini`, seguida do commit e de `-dirty` se há mudanças sem commit, por exemplo `0.1.0-a58af37`. O script `firmware_version.py` a monta a cada build.
 

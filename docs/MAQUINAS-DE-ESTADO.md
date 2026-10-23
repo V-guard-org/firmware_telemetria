@@ -149,10 +149,11 @@ O driver informa por que um quadro falhou:
 - **Agenda.** Cada PID vence de novo um período depois da sua última pergunta. O mais atrasado é o que venceu primeiro; no empate, sai o de menor número. Ao entrar em LENDO, todos vencem juntos e saem em ordem crescente, um a cada 50 ms. Com uma central que responde em 5 ms, o regime fica em cerca de 16 requisições/s.
 - **Resposta.** Vale só um quadro único (o nibble alto do byte 0 é 0), de `0x7E8` a `0x7EF`, com pelo menos os bytes que a fórmula usa (2 para `0x0C` e `0x42`, 1 para os outros). Os bytes crus guardados são todos os de dados da resposta, até 4.
 - **Resposta atrasada.** O valor vale, mas a requisição já contou em `obd_sem_resposta`, e não conta de novo em `obd_respondidas`.
+- **Resposta que ninguém pediu.** Só vale a resposta a um PID perguntado que ainda não teve resposta. Assim, as respostas a outro leitor ligado ao carro, que pergunta pelo `0x7DF`, não entram como valores nem como respostas do ESP32.
 - **Amostras** saem nos múltiplos do período desde o boot: a 5/s, em 0,2 s, 0,4 s, … Assim, a 1ª sai até 200 ms depois do 1º valor, em cerca de 1,2 s depois do 1º PING. Em LENDO, enquanto nenhum PID respondeu, não sai amostra, porque o decodificador não entregaria nada. Uma taxa nova leva a próxima amostra ao próximo múltiplo do período novo.
 - **Requisição.** Os bytes 3 a 7 vão em `0x00`.
 - **Até o #26:** sem resposta ao 01 00, o OBD entra em SEM_RESPOSTA e fica lá; uma escuta reprovada leva a VELOCIDADE_ERRADA ou LINHA_PRESA, sem transmitir, e fica lá; a presença da Pi ainda não é conferida.
-- **BLOQUEADO.** Um quadro barrado pelo portão silencia o transceptor e esquece os valores. Nenhum teste do núcleo chega a isso, porque o núcleo nunca manda um quadro fora da lista ([`TESTES.md` §5](TESTES.md)).
+- **BLOQUEADO.** Um quadro barrado pelo portão silencia o transceptor e esquece os valores. Nenhum teste do núcleo chega a isso, porque o núcleo nunca manda um quadro fora da lista ([`TESTES.md` §5](TESTES.md)). Com a agenda vazia, o OBD não tem prazo nenhum.
 
 ### 2.5 Sem resposta
 
